@@ -10,6 +10,8 @@ from __future__ import annotations
 import functools
 import importlib.util
 
+import torch
+
 
 @functools.cache
 def is_rocm_runtime() -> bool:
@@ -72,6 +74,20 @@ def driver_hip_version() -> int | None:
         return int(_load_pinned_extension().driver_cuda_version()) or None
     except Exception:
         return None
+
+
+@functools.cache
+def is_vllm_installed() -> bool:
+    return _importable("vllm")
+
+
+@functools.cache
+def device_capability() -> tuple[int, int]:
+    """Compute capability of the current device as (major, minor); (0, 0) without CUDA."""
+    if not torch.cuda.is_available():
+        return (0, 0)
+    major, minor = torch.cuda.get_device_capability()
+    return (int(major), int(minor))
 
 
 @functools.cache
