@@ -3,13 +3,21 @@ from __future__ import annotations
 import gc
 import math
 import os
+import sys
 from datetime import timedelta
 from typing import Any, Dict, Iterable, NamedTuple, Tuple
 
 import torch
 from freetoken.attention import AttnType, attention_backend_info, create_attention_backend
 from freetoken.core import Batch, Context, Req, set_global_ctx
-from freetoken.distributed import destroy_distributed, enable_pynccl_distributed, set_tp_info
+from freetoken.distributed import (
+    SingleRankProcessGroup,
+    destroy_distributed,
+    enable_pynccl_distributed,
+    enable_single_rank_distributed,
+    set_tp_info,
+    torch_distributed_process_group_available,
+)
 from freetoken.gpu_select import gpu_identity
 from freetoken.layers import set_rope_device
 from freetoken.models import create_model, load_weight
@@ -322,8 +330,12 @@ class Engine:
         set_rope_device(self.device)
         with torch.device("meta"), torch_dtype(config.dtype):
             self.model = create_model(config.model_config)
+        from freetoken.moe.host_banks import host_mem_summary
+
+        logger.info_rank0(f"Host memory before loading weights: {host_mem_summary()}")
         self.model.load_state_dict(self._load_weight_state_dict(config))
         post_weights_free = self._sync_get_memory()[0]
+        logger.info_rank0(f"Host memory after loading weights:  {host_mem_summary()}")
         self._weights_bytes = self._baseline_free - post_weights_free
         # Pool-budget baseline for the desktop cache sliders: free VRAM after the weights are
         # resident but before ANY runtime cache pool (MoE expert cache below, KV pages, GDN
@@ -431,7 +443,16 @@ class Engine:
             # Prefill runs on the first comma part; warm its autotune cache.
             self._warmup_prefill()
 
-    def _init_communication(self, config: EngineConfig) -> torch.distributed.ProcessGroup:
+    def _init_communication(
+        self, config: EngineConfig
+    ) -> torch.distributed.ProcessGroup | SingleRankProcessGroup:
+        if config.tp_info.size == 1 and not torch_distributed_process_group_available():
+            enable_single_rank_distributed()
+            logger.info_rank0(
+                "torch.distributed process groups are unavailable; using local single-rank communication"
+            )
+            return SingleRankProcessGroup()
+
         if config.tp_info.size == 1 or config.use_pynccl:
             torch.distributed.init_process_group(
                 backend="gloo",
@@ -620,6 +641,7 @@ class Engine:
                 prefill_overlap=config.moe_prefill_overlap,
                 prefill_hit_d2d=config.moe_prefill_hit_d2d,
                 quant_format=banks.quant_format,
+                gguf_expert_types=banks.gguf_expert_types,
                 decode_target=decode_target,
                 hybrid_max_fetch=config.moe_hybrid_max_fetch,
             )
@@ -719,6 +741,9 @@ class Engine:
         torch.cuda.empty_cache()
         torch.cuda.reset_peak_memory_stats(self.device)
         free_memory = get_free_memory(self.device)
+        if isinstance(self.tp_cpu_group, SingleRankProcessGroup):
+            return free_memory, free_memory
+
         free_mem_tensor = torch.tensor([free_memory, -free_memory], device="cpu", dtype=torch.int64)
         torch.distributed.all_reduce(
             free_mem_tensor, op=torch.distributed.ReduceOp.MIN, group=self.tp_cpu_group
@@ -1000,7 +1025,8 @@ class Engine:
 
     def shutdown(self) -> None:
         self.graph_runner.destroy_cuda_graphs()
-        torch.distributed.destroy_process_group()
+        if not isinstance(self.tp_cpu_group, SingleRankProcessGroup):
+            torch.distributed.destroy_process_group()
         destroy_distributed()
 
 
@@ -1029,6 +1055,15 @@ def _ensure_expandable_segments() -> None:
     is respected and left untouched.
     """
     if os.environ.get("PYTORCH_ALLOC_CONF") or os.environ.get("PYTORCH_CUDA_ALLOC_CONF"):
+        return
+    # On native Windows/ROCm, growing an expandable segment can mirror a large VRAM
+    # allocation into the process working set.  Host-offloaded MoE models need that RAM
+    # for expert banks, so keep the allocator default unless the user opts in explicitly.
+    if sys.platform == "win32" and getattr(torch.version, "hip", None) is not None:
+        logger.info_rank0(
+            "expandable_segments left OFF on ROCm/Windows "
+            "(set PYTORCH_ALLOC_CONF=expandable_segments:True to override)"
+        )
         return
     try:
         torch.cuda.memory._set_allocator_settings("expandable_segments:True")

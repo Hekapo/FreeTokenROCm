@@ -4,6 +4,8 @@ import importlib
 import os
 import pathlib
 import re
+from contextlib import contextmanager
+from functools import cache
 from typing import TYPE_CHECKING, List, NamedTuple, Tuple, TypeAlias, Union
 
 if TYPE_CHECKING:
@@ -19,7 +21,14 @@ _TRUE_VALUES = {"1", "true", "yes", "on"}
 DEFAULT_INCLUDE = [str(KERNEL_PATH / "include")]
 DEFAULT_CFLAGS = ["-std=c++20", "-O3"]
 DEFAULT_CUDA_CFLAGS = ["-std=c++20", "-O3", "--expt-relaxed-constexpr"]
+DEFAULT_HIP_CFLAGS = ["-std=c++20", "-O3"]
 DEFAULT_LDFLAGS = []
+DEFAULT_ROCM_ARCHES = ("gfx1100", "gfx1101", "gfx1102", "gfx1103", "gfx1200", "gfx1201")
+
+
+def _is_rocm() -> bool:
+    import torch
+    return getattr(torch.version, "hip", None) is not None
 
 
 def _cuda_cflags(extra: List[str]) -> List[str]:
@@ -30,7 +39,13 @@ def _cuda_cflags(extra: List[str]) -> List[str]:
     PTX→SASS JIT (driver-only, no CUDA toolkit). One top PTX suffices: the loader always
     JIT-forwards from the highest compatible PTX. When the env is unset (runtime JIT), this is a
     no-op and tvm-ffi targets only the local GPU."""
-    flags = DEFAULT_CUDA_CFLAGS + extra
+    import torch
+
+    flags = list(DEFAULT_CUDA_CFLAGS)
+    if torch.version.hip is not None:
+        # nvcc-only: hipcc/clang rejects it outright.
+        flags = [f for f in flags if f != "--expt-relaxed-constexpr"]
+    flags = flags + extra
     arch_list = os.getenv("TVM_FFI_CUDA_ARCH_LIST", "").split()
     if arch_list:
         def _rank(a: str) -> int:
@@ -40,6 +55,146 @@ def _cuda_cflags(extra: List[str]) -> List[str]:
         cc = max(arch_list, key=_rank).rstrip("a").replace(".", "")
         flags = flags + [f"-gencode=arch=compute_{cc},code=compute_{cc}"]
     return flags
+
+
+def rocm_compile_flags(extra: List[str]) -> List[str]:
+    """HIP flags for a kernel build on ROCm."""
+    # TODO(ROCm): Triton autotune configs need RDNA-specific tuning (wave count, LDS size).
+    flags = DEFAULT_HIP_CFLAGS + extra
+    raw_arches = os.getenv("FREETOKEN_ROCM_ARCH") or os.getenv("PYTORCH_ROCM_ARCH", "")
+    arches = list(dict.fromkeys(re.findall(r"gfx\d+[a-z]?", raw_arches.lower())))
+    if not arches:
+        from freetoken.utils.arch import get_rocm_gfx_arch
+
+        detected = get_rocm_gfx_arch()
+        arches = [detected] if detected else list(DEFAULT_ROCM_ARCHES)
+    if os.name == "nt":
+        flags += [
+            "-D__HIP_PLATFORM_AMD__=1",
+            "-DSTRIP_ERROR_MESSAGES",
+            "-DNOMINMAX",
+            "-fno-gpu-rdc",
+            "-fms-runtime-lib=dll",
+            f"--rocm-device-lib-path={_rocm_device_library_dir()}",
+        ]
+    return flags + [f"--offload-arch={arch}" for arch in arches]
+
+
+# Compatibility for downstream code that imported the pre-upstream helper.
+_hip_cflags = rocm_compile_flags
+
+
+def _cpp_cflags(extra: List[str]) -> List[str]:
+    """Return host-compiler flags accepted by the current platform toolchain."""
+    if os.name == "nt":
+        return ["/std:c++20", "/O2", "/DSTRIP_ERROR_MESSAGES", "/DNOMINMAX"] + extra
+    return DEFAULT_CFLAGS + extra
+
+
+def _rocm_candidates() -> List[pathlib.Path]:
+    candidates: list[pathlib.Path] = []
+    for variable in ("ROCM_HOME", "ROCM_PATH", "HIP_PATH"):
+        if os.getenv(variable):
+            candidates.append(pathlib.Path(os.environ[variable]))
+    try:
+        from torch.utils.cpp_extension import ROCM_HOME
+
+        if ROCM_HOME:
+            candidates.append(pathlib.Path(ROCM_HOME))
+    except ImportError:
+        pass
+    spec = importlib.util.find_spec("_rocm_sdk_core")
+    if spec and spec.submodule_search_locations:
+        candidates.append(pathlib.Path(next(iter(spec.submodule_search_locations))))
+    candidates.append(pathlib.Path("/opt/rocm"))
+    return list(dict.fromkeys(candidates))
+
+
+@cache
+def _rocm_device_library_dir() -> pathlib.Path:
+    """Find a complete HIP device-bitcode directory for Windows hipcc."""
+    for rocm_home in _rocm_candidates():
+        candidates = [
+            rocm_home / "lib" / "llvm" / "amdgcn" / "bitcode",
+            rocm_home / "amdgcn" / "bitcode",
+        ]
+        clang_root = rocm_home / "lib" / "llvm" / "lib" / "clang"
+        if clang_root.is_dir():
+            candidates.extend(
+                version / "amdgcn" / "bitcode"
+                for version in sorted(clang_root.iterdir(), reverse=True)
+                if version.is_dir()
+            )
+        for directory in candidates:
+            if (directory / "ocml.bc").is_file() and (directory / "ockl.bc").is_file():
+                return directory
+    raise RuntimeError("Unable to locate complete ROCm device libraries for HIP JIT")
+
+
+@contextmanager
+def _windows_hip_tvm_ffi_flags(enabled: bool):
+    """Correct pinned tvm-ffi's MSVC-only default device flags process-locally."""
+    if not enabled or os.name != "nt":
+        yield
+        return
+
+    from tvm_ffi.cpp import extension
+
+    original = extension._generate_ninja_build
+
+    def generate_ninja(*args, **kwargs):
+        ninja = original(*args, **kwargs)
+        marker = "-Xcompiler /std:c++17 /O2"
+        if marker not in ninja:
+            raise RuntimeError(
+                "Pinned tvm-ffi Windows HIP defaults changed; refusing an unverified flag rewrite"
+            )
+        return ninja.replace(marker, "-std=c++17 -O2")
+
+    extension._generate_ninja_build = generate_ninja
+    try:
+        yield
+    finally:
+        extension._generate_ninja_build = original
+
+
+@cache
+def _rocm_link_flags() -> List[str]:
+    """Make ROCm's runtime library discoverable to JIT link commands.
+
+    Traditional ROCm installs provide ``libamdhip64.so`` under ``$ROCM_HOME/lib``.
+    ROCm 7.14 Python SDK images only provide the versioned soname, while TVM-FFI
+    still links with ``-lamdhip64``. Supply a cache-local unversioned symlink via
+    an explicit linker search path without modifying the Python environment.
+    """
+    for rocm_home in _rocm_candidates():
+        library_dir = rocm_home / "lib"
+        if os.name == "nt":
+            import_library = library_dir / "amdhip64.lib"
+            if import_library.is_file():
+                return [f"/LIBPATH:{library_dir}", import_library.name]
+            continue
+        unversioned = library_dir / "libamdhip64.so"
+        link_dir = library_dir
+        if not unversioned.exists():
+            versioned = sorted(library_dir.glob("libamdhip64.so.*"))
+            if not versioned:
+                continue
+            link_dir = pathlib.Path.home() / ".cache" / "freetoken" / "rocm-lib"
+            link_dir.mkdir(parents=True, exist_ok=True)
+            compat_link = link_dir / "libamdhip64.so"
+            if not compat_link.exists() and not compat_link.is_symlink():
+                try:
+                    compat_link.symlink_to(versioned[-1])
+                except FileExistsError:
+                    # Multiple tensor-parallel ranks may prepare the same cache.
+                    pass
+
+        return [f"-L{link_dir}", f"-Wl,-rpath,{library_dir}"]
+
+    raise RuntimeError("Unable to locate libamdhip64 for ROCm JIT linking")
+
+
 CPP_TEMPLATE_TYPE: TypeAlias = Union[int, float, bool]
 
 
@@ -155,7 +310,8 @@ def _load_prebuilt(name: str) -> Module | None:
             )
         return None
 
-    so_path = cache_dir / name / f"{name}.so"
+    library_suffix = ".dll" if os.name == "nt" else ".so"
+    so_path = cache_dir / name / f"{name}{library_suffix}"
     if so_path.exists():
         import tvm_ffi
 
@@ -201,8 +357,9 @@ def load_aot(
         return prebuilt
 
     if cuda_files:
-        from freetoken.kernel._toolchain import check_nvcc_matches_torch
+        from freetoken.kernel._toolchain import check_nvcc_matches_torch, ensure_rocm_env
 
+        ensure_rocm_env()
         check_nvcc_matches_torch()
 
     from tvm_ffi.cpp import load
@@ -217,16 +374,24 @@ def load_aot(
     cpp_files = [str((KERNEL_PATH / "src" / f).resolve()) for f in cpp_files]
     cuda_files = [str((KERNEL_PATH / "src" / f).resolve()) for f in cuda_files]
 
-    return load(
-        name,
-        cpp_files=cpp_files,
-        cuda_files=cuda_files,
-        extra_cflags=DEFAULT_CFLAGS + extra_cflags,
-        extra_cuda_cflags=_cuda_cflags(extra_cuda_cflags),
-        extra_ldflags=DEFAULT_LDFLAGS + extra_ldflags,
-        extra_include_paths=DEFAULT_INCLUDE + extra_include_paths,
-        build_directory=build_directory,
-    )
+    if _is_rocm():
+        cuda_cflags = rocm_compile_flags(extra_cuda_cflags)
+        runtime_ldflags = _rocm_link_flags()
+    else:
+        cuda_cflags = _cuda_cflags(extra_cuda_cflags)
+        runtime_ldflags = []
+
+    with _windows_hip_tvm_ffi_flags(_is_rocm() and bool(cuda_files)):
+        return load(
+            name,
+            cpp_files=cpp_files,
+            cuda_files=cuda_files,
+            extra_cflags=_cpp_cflags(extra_cflags),
+            extra_cuda_cflags=cuda_cflags,
+            extra_ldflags=DEFAULT_LDFLAGS + runtime_ldflags + extra_ldflags,
+            extra_include_paths=DEFAULT_INCLUDE + extra_include_paths,
+            build_directory=build_directory,
+        )
 
 
 def load_jit(
@@ -247,8 +412,9 @@ def load_jit(
         return prebuilt
 
     if cuda_files or cuda_wrappers:
-        from freetoken.kernel._toolchain import check_nvcc_matches_torch
+        from freetoken.kernel._toolchain import check_nvcc_matches_torch, ensure_rocm_env
 
+        ensure_rocm_env()
         check_nvcc_matches_torch()
 
     from tvm_ffi.cpp import load_inline
@@ -272,13 +438,21 @@ def load_jit(
     cuda_sources = [f'#include "{path}"' for path in cuda_paths]
     cuda_sources += [_make_wrapper(tup) for tup in cuda_wrappers]
 
-    return load_inline(
-        name,
-        cpp_sources=cpp_sources,
-        cuda_sources=cuda_sources,
-        extra_cflags=DEFAULT_CFLAGS + extra_cflags,
-        extra_cuda_cflags=_cuda_cflags(extra_cuda_cflags),
-        extra_ldflags=DEFAULT_LDFLAGS + extra_ldflags,
-        extra_include_paths=DEFAULT_INCLUDE + extra_include_paths,
-        build_directory=build_directory,
-    )
+    if _is_rocm():
+        cuda_cflags = rocm_compile_flags(extra_cuda_cflags)
+        runtime_ldflags = _rocm_link_flags()
+    else:
+        cuda_cflags = _cuda_cflags(extra_cuda_cflags)
+        runtime_ldflags = []
+
+    with _windows_hip_tvm_ffi_flags(_is_rocm() and bool(cuda_sources)):
+        return load_inline(
+            name,
+            cpp_sources=cpp_sources,
+            cuda_sources=cuda_sources,
+            extra_cflags=_cpp_cflags(extra_cflags),
+            extra_cuda_cflags=cuda_cflags,
+            extra_ldflags=DEFAULT_LDFLAGS + runtime_ldflags + extra_ldflags,
+            extra_include_paths=DEFAULT_INCLUDE + extra_include_paths,
+            build_directory=build_directory,
+        )

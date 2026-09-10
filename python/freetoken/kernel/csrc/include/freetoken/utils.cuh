@@ -1,5 +1,6 @@
 #pragma once
 
+#include <freetoken/hip_compat.h>
 #include <freetoken/utils.h>
 
 #include <dlpack/dlpack.h>
@@ -9,6 +10,13 @@
 #include <cstddef>
 #include <source_location>
 #include <type_traits>
+
+// hip_compat.h owns the CUDA-to-HIP runtime mappings and includes the HIP runtime.
+// Keep the native CUDA include only on the NVIDIA path so the two compatibility
+// layers cannot redefine the same HIP symbols after macro expansion.
+#if !(defined(__HIP_PLATFORM_AMD__) || defined(__HIPCC__))
+#include <cuda_runtime.h>
+#endif
 
 namespace device {
 
@@ -42,16 +50,24 @@ __always_inline __device__ auto offset(const T *ptr, U... offset) -> const
 
 namespace PDL {
 
+// Programmatic Dependent Launch is a Hopper-only CUDA hardware feature; the PTX
+// below has no HIP/ROCm equivalent. Callers gate kUsePDL off for non-Hopper CUDA
+// targets already, and LaunchKernel::with_attr is a no-op on HIP (see below), so
+// this stays unconditionally a no-op there rather than a compile failure.
 template <bool kUsePDL> __always_inline __device__ void wait() {
+#if !(defined(__HIP_PLATFORM_AMD__) || defined(__HIPCC__))
   if constexpr (kUsePDL) {
     asm volatile("griddepcontrol.wait;" ::: "memory");
   }
+#endif
 }
 
 template <bool kUsePDL> __always_inline __device__ void launch() {
+#if !(defined(__HIP_PLATFORM_AMD__) || defined(__HIPCC__))
   if constexpr (kUsePDL) {
     asm volatile("griddepcontrol.launch_dependents;" :::);
   }
+#endif
 }
 
 } // namespace PDL
@@ -88,6 +104,54 @@ template <auto F> inline void set_smem_once(std::size_t smem_size) {
       last_smem_size, " bytes");
 }
 
+#if defined(__HIP_PLATFORM_AMD__) || defined(__HIPCC__)
+
+// HIP has no cudaLaunchKernelEx/cudaLaunchConfig_t analog (that API only exists to
+// carry Hopper PDL attributes, which ROCm hardware has no equivalent for), so this
+// launches via the plain triple-chevron form instead. with_attr(true) is therefore
+// a no-op here -- there is no attribute to carry.
+struct LaunchKernel {
+public:
+  explicit LaunchKernel(dim3 grid_dim, dim3 block_dim, DLDevice device,
+                        std::size_t dynamic_shared_mem_bytes = 0) noexcept
+      : m_grid_dim(grid_dim), m_block_dim(block_dim),
+        m_smem(dynamic_shared_mem_bytes), m_stream(resolve_device(device)) {}
+
+  explicit LaunchKernel(dim3 grid_dim, dim3 block_dim, cudaStream_t stream,
+                        std::size_t dynamic_shared_mem_bytes = 0) noexcept
+      : m_grid_dim(grid_dim), m_block_dim(block_dim),
+        m_smem(dynamic_shared_mem_bytes), m_stream(stream) {}
+
+  static auto resolve_device(DLDevice device) -> cudaStream_t {
+    return static_cast<cudaStream_t>(
+        ::TVMFFIEnvGetStream(device.device_type, device.device_id));
+  }
+
+  LaunchKernel(const LaunchKernel &) = delete;
+  LaunchKernel &operator=(const LaunchKernel &) = delete;
+
+  template <typename T, typename... Args>
+  auto operator()(T &&kernel, Args &&...args) const -> void {
+    kernel<<<m_grid_dim, m_block_dim, m_smem, m_stream>>>(
+        std::forward<Args>(args)...);
+    CUDA_CHECK(::cudaGetLastError());
+  }
+
+  auto with_attr(bool use_pdl) -> LaunchKernel & {
+    RuntimeCheck(!use_pdl,
+                 "Programmatic dependent launch is unavailable on ROCm");
+    return *this;
+  }
+
+private:
+  dim3 m_grid_dim;
+  dim3 m_block_dim;
+  std::size_t m_smem;
+  cudaStream_t m_stream;
+};
+
+#else
+
 struct LaunchKernel {
 public:
   explicit LaunchKernel(dim3 grid_dim, dim3 block_dim, DLDevice device,
@@ -115,6 +179,10 @@ public:
   }
 
   auto with_attr(bool use_pdl) -> LaunchKernel & {
+#ifdef __HIP__
+    (void)use_pdl;
+    m_config.numAttrs = 0;
+#else
     if (use_pdl) {
       m_attr_cache.id = ::cudaLaunchAttributeProgrammaticStreamSerialization;
       m_attr_cache.val.programmaticStreamSerializationAllowed = 1;
@@ -123,6 +191,7 @@ public:
     } else {
       m_config.numAttrs = 0;
     }
+#endif
     return *this;
   }
 
@@ -140,5 +209,7 @@ private:
   cudaLaunchConfig_t m_config;
   cudaLaunchAttribute m_attr_cache;
 };
+
+#endif
 
 } // namespace host
