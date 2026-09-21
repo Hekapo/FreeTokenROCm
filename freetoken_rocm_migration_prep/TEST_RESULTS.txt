@@ -1,0 +1,12 @@
+Validation performed in assistant's Linux environment:
+- python -m unittest -v test_collect_rocm_env.py: 8 tests passed.
+- collect_rocm_env.py --help: passed.
+- inventory without --probe-torch: produced parseable JSON.
+
+Not performed:
+- Windows-specific RAM API on a Windows host.
+- Real PyTorch/HIP probe on AMD hardware.
+- FreeToken installation, native/JIT compilation or model inference.
+- ROCm 7.2.1 vs 10.0.0 migration or performance comparison.
+
+No GitHub writes were performed.
