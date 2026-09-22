@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import importlib
 import os
 import pathlib
@@ -158,6 +159,28 @@ def _windows_hip_tvm_ffi_flags(enabled: bool):
         extension._generate_ninja_build = original
 
 
+def _rocm_compat_link_dir(runtime: pathlib.Path) -> pathlib.Path:
+    """Namespace a linker alias by its canonical runtime path and contents."""
+    runtime = runtime.resolve(strict=True)
+    digest = hashlib.sha256(os.fsencode(str(runtime)) + b"\0")
+    with runtime.open("rb") as source:
+        for chunk in iter(lambda: source.read(1 << 20), b""):
+            digest.update(chunk)
+    cache_root = pathlib.Path(
+        os.environ.get("XDG_CACHE_HOME") or pathlib.Path.home() / ".cache"
+    ).expanduser().resolve()
+    link_dir = cache_root / "freetoken" / "rocm-lib" / digest.hexdigest()
+    link_dir.mkdir(parents=True, exist_ok=True)
+    link = link_dir / "libamdhip64.so"
+    try:
+        link.symlink_to(runtime)
+    except FileExistsError:
+        pass  # Another process may have installed the same immutable alias.
+    if not link.is_symlink() or link.resolve(strict=True) != runtime:
+        raise RuntimeError(f"ROCm compatibility link does not match selected runtime: {link}")
+    return link_dir
+
+
 @cache
 def _rocm_link_flags() -> List[str]:
     """Make ROCm's runtime library discoverable to JIT link commands.
@@ -176,19 +199,19 @@ def _rocm_link_flags() -> List[str]:
             continue
         unversioned = library_dir / "libamdhip64.so"
         link_dir = library_dir
-        if not unversioned.exists():
-            versioned = sorted(library_dir.glob("libamdhip64.so.*"))
-            if not versioned:
+        if not unversioned.is_file():
+            runtimes = sorted({
+                path.resolve(strict=True)
+                for path in library_dir.glob("libamdhip64.so.*") if path.is_file()
+            })
+            if not runtimes:
                 continue
-            link_dir = pathlib.Path.home() / ".cache" / "freetoken" / "rocm-lib"
-            link_dir.mkdir(parents=True, exist_ok=True)
-            compat_link = link_dir / "libamdhip64.so"
-            if not compat_link.exists() and not compat_link.is_symlink():
-                try:
-                    compat_link.symlink_to(versioned[-1])
-                except FileExistsError:
-                    # Multiple tensor-parallel ranks may prepare the same cache.
-                    pass
+            if len(runtimes) != 1:
+                raise RuntimeError(
+                    f"Multiple HIP runtimes under {library_dir}; select an SDK with "
+                    "an authoritative libamdhip64.so alias or one runtime"
+                )
+            link_dir = _rocm_compat_link_dir(runtimes[0])
 
         return [f"-L{link_dir}", f"-Wl,-rpath,{library_dir}"]
 
