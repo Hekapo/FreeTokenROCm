@@ -89,10 +89,17 @@ struct StoreKernel {
 
     const auto dtype_size = dtype_bytes(dtype_.unwrap());
     RuntimeCheck(element_size == dtype_size * D.unwrap());
+    // distinct indices must land in disjoint cache rows (X == 0 aliases every row)
+    RuntimeCheck(X.unwrap() >= D.unwrap(), "StoreKernel: kv cache rows overlap (row stride ",
+                 X.unwrap(), " < row width ", D.unwrap(), ")");
 
     const auto device = device_.unwrap();
     const auto use_int32 = indices_dtype_.unwrap().bits == 32;
     const auto length = static_cast<std::size_t>(L.unwrap());
+    // an empty store is valid once all metadata above matched; a zero grid is not
+    if (length == 0) {
+      return;
+    }
     const auto kv_cache_stride = X.unwrap() * dtype_size;
     const auto kv_input_stride = Y.unwrap() * dtype_size;
 

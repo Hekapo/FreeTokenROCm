@@ -600,6 +600,7 @@ struct MultiIndexCopyKernel {
         }
 
         const int num_banks = static_cast<int>(B.unwrap());
+        RuntimeCheck(num_banks > 0, "MultiIndexCopyKernel: no banks to copy.");
         const auto params = MultiIndexCopyParams{
             static_cast<const int64_t*>(dst_ptrs.data_ptr()),
             static_cast<const int64_t*>(src_ptrs.data_ptr()),
