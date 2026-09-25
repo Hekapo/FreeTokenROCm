@@ -159,6 +159,44 @@ def _windows_hip_tvm_ffi_flags(enabled: bool):
         extension._generate_ninja_build = original
 
 
+# Pinned tvm-ffi declares `depfile = $out.d` / `deps = gcc` for HIP but never asks
+# hipcc to write it, so ninja records no header dependencies and an edited
+# tensor.h or *.cuh never rebuilds an existing JIT build directory.
+_HIP_COMPILE_COMMAND = "  command = $nvcc $cuda_cflags -c $in -o $out"
+_HIP_COMPILE_COMMAND_WITH_DEPFILE = "  command = $nvcc -MD -MF $out.d $cuda_cflags -c $in -o $out"
+
+
+def _add_hip_depfile(ninja: str) -> str:
+    if "rule compile_cuda" not in ninja or _HIP_COMPILE_COMMAND_WITH_DEPFILE in ninja:
+        return ninja
+    if ninja.count(_HIP_COMPILE_COMMAND) != 1:
+        raise RuntimeError(
+            "Pinned tvm-ffi HIP compile rule changed; refusing an unverified depfile rewrite"
+        )
+    return ninja.replace(_HIP_COMPILE_COMMAND, _HIP_COMPILE_COMMAND_WITH_DEPFILE)
+
+
+@contextmanager
+def _hip_depfile_tvm_ffi_rule(enabled: bool):
+    """Make pinned tvm-ffi's HIP compile rule emit the depfile ninja expects."""
+    if not enabled:
+        yield
+        return
+
+    from tvm_ffi.cpp import extension
+
+    original = extension._generate_ninja_build
+
+    def generate_ninja(*args, **kwargs):
+        return _add_hip_depfile(original(*args, **kwargs))
+
+    extension._generate_ninja_build = generate_ninja
+    try:
+        yield
+    finally:
+        extension._generate_ninja_build = original
+
+
 def _rocm_compat_link_dir(runtime: pathlib.Path) -> pathlib.Path:
     """Namespace a linker alias by its canonical runtime path and contents."""
     runtime = runtime.resolve(strict=True)
@@ -404,7 +442,8 @@ def load_aot(
         cuda_cflags = _cuda_cflags(extra_cuda_cflags)
         runtime_ldflags = []
 
-    with _windows_hip_tvm_ffi_flags(_is_rocm() and bool(cuda_files)):
+    hip = _is_rocm() and bool(cuda_files)
+    with _windows_hip_tvm_ffi_flags(hip), _hip_depfile_tvm_ffi_rule(hip):
         return load(
             name,
             cpp_files=cpp_files,
@@ -468,7 +507,8 @@ def load_jit(
         cuda_cflags = _cuda_cflags(extra_cuda_cflags)
         runtime_ldflags = []
 
-    with _windows_hip_tvm_ffi_flags(_is_rocm() and bool(cuda_sources)):
+    hip = _is_rocm() and bool(cuda_sources)
+    with _windows_hip_tvm_ffi_flags(hip), _hip_depfile_tvm_ffi_rule(hip):
         return load_inline(
             name,
             cpp_sources=cpp_sources,
