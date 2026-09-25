@@ -545,7 +545,7 @@ async def dispatch_rebuild(
         state.rebuild_futures[request_id] = fut
         state._active_rebuild_id = request_id
         state.maintenance_state = "rebuilding"
-    try:
+    async def send_and_wait() -> Dict[str, Any]:
         try:
             await state.send_one(
                 CacheRebuildMsg(
@@ -558,19 +558,23 @@ async def dispatch_rebuild(
                 )
             )
         except Exception as e:  # noqa: BLE001
-            # Retain the enqueue-failure policy, but never undo a newer terminal transition.
-            with MAINTENANCE_LOCK:
-                if state._active_rebuild_id == request_id:
-                    state._active_rebuild_id = None
-                    if getattr(state, "fatal_error", None) is not None:
-                        state.maintenance_state = "failed"
-                    elif state.maintenance_state == "rebuilding":
-                        state.maintenance_state = "serving"
-            return {"status": "failed", "error": f"failed to dispatch rebuild: {e!r}"}
-        try:
-            return await asyncio.wait_for(fut, timeout=timeout)
-        except asyncio.TimeoutError:
-            return {"status": "timeout", "request_id": request_id}
+            # A received result outranks an error from the older local send.
+            if fut.done() and not fut.cancelled():
+                return fut.result()
+            # No delivery proof: retain the active ID for a possible late reply.
+            return {
+                "status": "failed",
+                "request_id": request_id,
+                "delivery": "unknown",
+                "error": f"failed to dispatch rebuild; delivery is unknown: {e!r}",
+            }
+        return await fut
+
+    try:
+        # Include the send in the cooperative wait budget; support Python 3.10.
+        return await asyncio.wait_for(send_and_wait(), timeout=timeout)
+    except asyncio.TimeoutError:
+        return {"status": "timeout", "request_id": request_id}
     finally:
         # Timeout/cancellation ends the HTTP wait, not the backend operation.
         state.rebuild_futures.pop(request_id, None)

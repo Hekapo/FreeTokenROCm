@@ -1,19 +1,8 @@
-"""State-machine tests for the runtime cache-rebuild maintenance gate (api_server).
+"""Rebuild admission, correlation, and local-send uncertainty without real workers.
 
-dispatch_rebuild latches maintenance_state to "rebuilding"; the only ways back to a definite
-state are the scheduler's reply (via FrontendManager._resolve_rebuild), a dispatch-time error,
-or the liveness watchdog on a crash. These tests pin all three edge paths so a rebuild can
-never wedge the server in "rebuilding" forever:
-
-  1. dispatch exception   -> gate rolls back to "serving" (the scheduler never got the request)
-  2. HTTP wait timeout    -> stays "rebuilding" on purpose, but the late reply still resolves it
-  3. scheduler crash      -> the watchdog latches "failed", wakes the in-flight rebuild waiter
-                             (so it fails promptly, not on timeout), and a buffered reply can't
-                             undo the latch
-
-They use a lightweight fake state exposing only the handful of attributes the code touches, so
-no ZMQ / listener task / GPU is needed. _resolve_rebuild is exercised as an unbound method on
-the fake — the real method logic, a stand-in ``self``.
+A send error or an expired HTTP wait cannot prove that the backend did no work.
+Keep the operation active until a matching reply; terminal lifecycle gates stay closed.
+Queue tests below inject socket stand-ins, not a live ZMQ transport.
 """
 
 from __future__ import annotations
@@ -72,10 +61,7 @@ def _reply(request_id, status, **over):
     return SimpleNamespace(**base)
 
 
-def test_dispatch_exception_returns_to_serving():
-    """Enqueue failure (e.g. a transient ZMQ error): the scheduler never received the request,
-    so the gate must roll back to serving — not latch "rebuilding" with no reply ever coming."""
-
+def test_dispatch_exception_keeps_delivery_unresolved():
     async def boom(_msg):
         raise RuntimeError("zmq push failed")
 
@@ -86,9 +72,11 @@ def test_dispatch_exception_returns_to_serving():
 
     result = asyncio.run(_run())
     assert result["status"] == "failed"
+    assert result["delivery"] == "unknown"
     assert "zmq push failed" in result["error"]
-    assert state.maintenance_state == "serving"
-    assert state.rebuild_futures == {}  # no dangling future leaked
+    assert state.maintenance_state == "rebuilding"
+    assert state._active_rebuild_id == result["request_id"]
+    assert state.rebuild_futures == {}
 
 
 def test_timeout_stays_rebuilding_then_late_reply_resolves():
@@ -298,11 +286,8 @@ def test_cache_rebuild_timeout_keeps_gate_closed():
     assert len(sent) == 1  # the rebuild request was still dispatched to the backend
 
 
-def test_cache_rebuild_send_failure_rolls_back_gate():
-    # If dispatching the rebuild message fails, the scheduler never received it and the engine
-    # is untouched -- the gate must roll back to serving, not latch maintenance forever.
-    import asyncio
-    from types import SimpleNamespace
+def test_cache_rebuild_send_failure_reports_unknown_delivery():
+    import json
 
     from freetoken.server import api_server
     from freetoken.server.api_server import CacheRebuildRequest, cache_rebuild
@@ -313,15 +298,19 @@ def test_cache_rebuild_send_failure_rolls_back_gate():
     state = SimpleNamespace(
         maintenance_state="serving", rebuild_futures={}, last_rebuild=None, send_one=boom
     )
+    previous_state = api_server._GLOBAL_STATE
     api_server._GLOBAL_STATE = state
     try:
         resp = asyncio.run(cache_rebuild(CacheRebuildRequest(moe_cache_size=8, timeout=5.0)))
     finally:
-        api_server._GLOBAL_STATE = None
+        api_server._GLOBAL_STATE = previous_state
 
+    result = json.loads(resp.body)
     assert resp.status_code == 503
-    assert state.maintenance_state == "serving"  # rolled back, not latched
-    assert state.rebuild_futures == {}  # dangling future cleaned up
+    assert result["delivery"] == "unknown"
+    assert state.maintenance_state == "rebuilding"
+    assert state._active_rebuild_id == result["request_id"]
+    assert state.rebuild_futures == {}
 
 
 def test_cache_rebuild_request_rejects_unknown_mode():
@@ -354,7 +343,8 @@ def test_dispatch_error_preserves_terminal_gate(terminal):
         assert result["status"] == "failed"
         assert state.maintenance_state == terminal
         assert state.rebuild_futures == {}
-        assert state._active_rebuild_id is None
+        assert result["delivery"] == "unknown"
+        assert state._active_rebuild_id == result["request_id"]
 
     asyncio.run(run())
 
@@ -559,7 +549,7 @@ def test_old_send_error_cannot_clear_a_newer_operation():
 
         state = _FakeState(send)
         result = await dispatch_rebuild(state, moe_cache_size=8, num_pages=None)
-        assert result["status"] == "failed"
+        assert result["status"] == "ok"
         r2 = sent[1].request_id
         assert state._active_rebuild_id == r2
         assert state.maintenance_state == "rebuilding"
@@ -567,6 +557,125 @@ def test_old_send_error_cannot_clear_a_newer_operation():
         assert second is not None and not second.done()
         FrontendManager._resolve_rebuild(state, _reply(r2, "ok", num_pages=128))
         assert (await second)["num_pages"] == 128
+        assert state.rebuild_futures == {}
+
+    asyncio.run(run())
+
+
+@pytest.mark.parametrize("status", ["ok", "busy", "rejected", "unsupported", "failed"])
+def test_late_reply_resolves_unknown_send_without_a_retry(status):
+    async def run():
+        sent = []
+
+        async def send(msg):
+            sent.append(msg)
+            raise RuntimeError("send outcome unavailable")
+
+        state = _FakeState(send)
+        previous = {"request_id": "previous", "num_pages": 64}
+        state.last_rebuild = previous
+        result = await dispatch_rebuild(state, moe_cache_size=8, num_pages=None)
+        request_id = result["request_id"]
+        assert result["delivery"] == "unknown"
+        assert state.last_rebuild is previous
+        assert state._active_rebuild_id == request_id
+        assert state.rebuild_futures == {}
+
+        blocked = await dispatch_rebuild(state, moe_cache_size=16, num_pages=None)
+        assert blocked["status"] == "failed"
+        assert len(sent) == 1
+        FrontendManager._resolve_rebuild(state, _reply("unrelated", "ok", num_pages=999))
+        assert state._active_rebuild_id == request_id
+        assert state.last_rebuild is previous
+
+        FrontendManager._resolve_rebuild(state, _reply(request_id, status, num_pages=128))
+        assert state._active_rebuild_id is None
+        assert state.last_rebuild["request_id"] == request_id
+        assert state.last_rebuild["num_pages"] == 128
+        assert state.maintenance_state == ("failed" if status == "failed" else "serving")
+
+    asyncio.run(run())
+
+
+@pytest.mark.parametrize("phase", ["encoder", "socket_call", "socket_future"])
+def test_queue_error_type_does_not_prove_the_send_phase(phase):
+    from freetoken.utils.mp import ZmqAsyncPushQueue
+
+    async def run():
+        calls = []
+
+        def encode(msg):
+            if phase == "encoder":
+                raise RuntimeError("injected transport failure")
+            return {"request_id": msg.request_id}
+
+        class Socket:
+            def send(self, data, **kwargs):
+                calls.append(data)
+                if phase == "socket_call":
+                    raise RuntimeError("injected transport failure")
+                fut = asyncio.get_running_loop().create_future()
+                fut.set_exception(RuntimeError("injected transport failure"))
+                return fut
+
+        # No constructor: it would create a real context and socket.
+        queue = ZmqAsyncPushQueue.__new__(ZmqAsyncPushQueue)
+        queue.encoder = encode
+        queue.socket = Socket()
+        state = _FakeState(queue.put)
+        result = await dispatch_rebuild(state, moe_cache_size=8, num_pages=None)
+        assert len(calls) == (0 if phase == "encoder" else 1)
+        assert result["delivery"] == "unknown"
+        assert state.maintenance_state == "rebuilding"
+        assert state._active_rebuild_id == result["request_id"]
+        assert state.rebuild_futures == {}
+
+    asyncio.run(run())
+
+
+def test_rebuild_deadline_also_bounds_an_awaited_send():
+    async def run():
+        blocker = asyncio.Event()
+        send_exited = asyncio.Event()
+
+        async def send(_msg):
+            try:
+                await blocker.wait()
+            finally:
+                send_exited.set()
+
+        state = _FakeState(send)
+        # The outer limit is a regression guard, not a second production deadline.
+        result = await asyncio.wait_for(
+            dispatch_rebuild(state, moe_cache_size=8, num_pages=None, timeout=0.01),
+            timeout=2.0,
+        )
+        assert result["status"] == "timeout"
+        assert send_exited.is_set()
+        assert state.maintenance_state == "rebuilding"
+        assert state._active_rebuild_id == result["request_id"]
+        assert state.rebuild_futures == {}
+
+    asyncio.run(run())
+
+
+@pytest.mark.parametrize("status", ["ok", "rejected", "failed"])
+def test_received_result_outranks_a_later_local_send_error(status):
+    async def run():
+        async def send(msg):
+            FrontendManager._resolve_rebuild(
+                state, _reply(msg.request_id, status, num_pages=128)
+            )
+            raise RuntimeError("local error after the backend result")
+
+        state = _FakeState(send)
+        result = await dispatch_rebuild(state, moe_cache_size=8, num_pages=None)
+        assert result is state.last_rebuild
+        assert result["status"] == status
+        assert result["num_pages"] == 128
+        assert "delivery" not in result
+        assert state._active_rebuild_id is None
+        assert state.maintenance_state == ("failed" if status == "failed" else "serving")
         assert state.rebuild_futures == {}
 
     asyncio.run(run())
