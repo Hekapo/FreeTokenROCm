@@ -210,12 +210,14 @@ def test_wrong_namespaced_cache_entry_is_not_overwritten(kernel_utils, tmp_path,
         if replacement == "wrong_link":
             other.touch()
         link.symlink_to(other)
+    original_target = link.readlink() if replacement != "file" else None
     with pytest.raises((RuntimeError, FileNotFoundError)):
         kernel_utils._rocm_compat_link_dir(runtime)
     if replacement == "file":
         assert link.read_bytes() == b"do not overwrite"
     else:
-        assert link.readlink() == other
+        assert link.is_symlink()
+        assert link.readlink() == original_target
 
 
 def test_repeated_link_creation_is_idempotent(kernel_utils, tmp_path):
