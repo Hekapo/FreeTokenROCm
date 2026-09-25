@@ -54,6 +54,17 @@ class GenerationError(Exception):
         self.code = code
 
 
+# ``UserReply.error_code`` the frontend stamps on every request still in flight when a backend
+# worker dies (FrontendManager.fail_inflight_requests): no reply will ever come from that engine.
+ENGINE_UNAVAILABLE = "engine_unavailable"
+
+
+def is_engine_failure(code: str | None) -> bool:
+    """A dead engine is the server's fault and worth retrying elsewhere (HTTP 503); every other
+    generation error is input-driven (HTTP 400)."""
+    return code == ENGINE_UNAVAILABLE
+
+
 # --------------------------------------------------------------------------- #
 # Protocol-neutral generation events.
 #
