@@ -172,3 +172,58 @@ def test_prepare_stop_route_rejects_non_loopback_without_closing_admission():
 @pytest.mark.parametrize("host", ["127.0.0.1", "::1", "::ffff:127.0.0.1"])
 def test_loopback_recognizes_ipv4_ipv6_and_mapped_ipv4(host):
     assert _is_loopback(host)
+
+
+@pytest.mark.parametrize("ready_first", [False, True])
+def test_backend_ready_cannot_reopen_a_prepared_stop(ready_first):
+    from freetoken.server.api_server import _mark_backend_ready
+
+    state = _state(maintenance="loading")
+    state.fatal_error = None
+    if ready_first:
+        assert _mark_backend_ready(state) is True
+    sealed = asyncio.run(prepare_stop_accounting(state))
+    assert _mark_backend_ready(state) is False
+    assert state.maintenance_state == "stopping"
+    assert asyncio.run(prepare_stop_accounting(state)) == sealed
+
+
+def test_duplicate_rebuild_reply_cannot_change_sealed_stop():
+    from freetoken.server.api_server import _mark_backend_ready
+
+    state = _state(maintenance="serving")
+    state.fatal_error = None
+    state._active_rebuild_id = None
+    state.rebuild_futures = {}
+    previous = {"request_id": "r1", "num_pages": 64}
+    state.last_rebuild = previous
+    sealed = asyncio.run(prepare_stop_accounting(state))
+    FrontendManager._resolve_rebuild(
+        state,
+        SimpleNamespace(
+            request_id="r1", status="ok", num_pages=999, moe_cache_size=0,
+            mamba_slots=0, num_swa_pages=0, error=None,
+        ),
+    )
+    assert _mark_backend_ready(state) is False
+    assert state.maintenance_state == "stopping"
+    assert state.last_rebuild is previous
+    assert asyncio.run(prepare_stop_accounting(state)) == sealed
+
+
+@pytest.mark.parametrize("fatal", [None, "scheduler exited"])
+def test_prepare_stop_retains_failed_latch(fatal):
+    state = _state(maintenance="failed")
+    state.fatal_error = fatal
+    sealed = asyncio.run(prepare_stop_accounting(state))
+    assert sealed["drain_complete"] is True
+    assert state.maintenance_state == "failed"
+    assert state.fatal_error == fatal
+
+
+def test_prepare_stop_still_rejects_active_rebuild():
+    state = _state(maintenance="rebuilding")
+    with pytest.raises(AccountingDrainError, match="cache rebuild is in progress"):
+        asyncio.run(prepare_stop_accounting(state))
+    assert state.maintenance_state == "rebuilding"
+    assert not hasattr(state, "_sealed_accounting")

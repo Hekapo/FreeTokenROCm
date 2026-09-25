@@ -23,9 +23,13 @@ import queue
 import threading
 from types import SimpleNamespace
 
+import pytest
 from fastapi.testclient import TestClient
 
-from freetoken.server.api_server import FrontendManager, dispatch_rebuild
+from freetoken.server.accounting import MAINTENANCE_LOCK, AdmissionClosedError
+from freetoken.server.api_server import (
+    FrontendManager, _mark_backend_failed, _mark_backend_ready, dispatch_rebuild,
+)
 from freetoken.server.supervisor import (
     BackendHandle,
     LoadProgress,
@@ -39,8 +43,11 @@ class _FakeState:
     the event loop (_loop, for cross-thread future resolution), and an async send_one delegating
     to an injected impl (so a test can make the enqueue succeed or raise)."""
 
-    def __init__(self, send_impl, *, maintenance_state="serving", fatal_error=None):
+    def __init__(
+        self, send_impl, *, maintenance_state="serving", fatal_error=None, active_rebuild_id=None
+    ):
         self.rebuild_futures: dict = {}
+        self._active_rebuild_id = active_rebuild_id
         self.maintenance_state = maintenance_state
         self.fatal_error = fatal_error
         self.last_rebuild = None
@@ -108,7 +115,7 @@ def test_timeout_stays_rebuilding_then_late_reply_resolves():
 
 
 def test_resolve_failed_latches_failed():
-    state = _FakeState(None, maintenance_state="rebuilding")
+    state = _FakeState(None, maintenance_state="rebuilding", active_rebuild_id="r1")
     FrontendManager._resolve_rebuild(state, _reply("r1", "failed", error="OOM during recapture"))
     assert state.maintenance_state == "failed"
     assert state.last_rebuild["error"] == "OOM during recapture"
@@ -117,7 +124,7 @@ def test_resolve_failed_latches_failed():
 def test_resolve_nonfatal_statuses_keep_serving():
     # ok / busy / rejected / unsupported all leave the prior cache intact -> keep serving.
     for status in ("ok", "busy", "rejected", "unsupported"):
-        state = _FakeState(None, maintenance_state="rebuilding")
+        state = _FakeState(None, maintenance_state="rebuilding", active_rebuild_id="r1")
         FrontendManager._resolve_rebuild(state, _reply("r1", status))
         assert state.maintenance_state == "serving", status
 
@@ -128,7 +135,9 @@ def test_late_reply_cannot_resurrect_a_fatal_latch():
     waiter blocked on that request_id (the reply path) and is recorded for observability."""
 
     async def _run():
-        state = _FakeState(None, maintenance_state="failed", fatal_error="scheduler exited")
+        state = _FakeState(
+            None, maintenance_state="failed", fatal_error="scheduler exited", active_rebuild_id="r1"
+        )
         # A caller is still parked on this request_id's future (the "late reply" the name
         # promises): _resolve_rebuild must wake it even though the gate stays latched.
         fut = asyncio.get_running_loop().create_future()
@@ -181,8 +190,7 @@ def test_crash_during_rebuild_latches_failed_via_watchdog():
         # Production _on_failure: latch failed AND wake any pending rebuild waiter — called here
         # from the supervisor thread, so fail_pending_rebuilds must marshal onto the loop.
         def on_failure(message):
-            state.fatal_error = message
-            state.maintenance_state = "failed"
+            _mark_backend_failed(state, message)
             FrontendManager.fail_pending_rebuilds(state, message)
 
         sup = threading.Thread(
@@ -327,3 +335,238 @@ def test_cache_rebuild_request_rejects_unknown_mode():
     assert CacheRebuildRequest(mode="if_idle").mode == "if_idle"
     with pytest.raises(ValidationError):
         CacheRebuildRequest(mode="drain")
+
+
+@pytest.mark.parametrize("terminal", ["failed", "stopping"])
+def test_dispatch_error_preserves_terminal_gate(terminal):
+    async def run():
+        async def send(_msg):
+            if terminal == "failed":
+                _mark_backend_failed(state, "scheduler exited")
+            else:
+                # The normal stop endpoint rejects rebuilding; this injects a later gate.
+                with MAINTENANCE_LOCK:
+                    state.maintenance_state = "stopping"
+            raise RuntimeError("send failed")
+
+        state = _FakeState(send)
+        result = await dispatch_rebuild(state, moe_cache_size=8, num_pages=None)
+        assert result["status"] == "failed"
+        assert state.maintenance_state == terminal
+        assert state.rebuild_futures == {}
+        assert state._active_rebuild_id is None
+
+    asyncio.run(run())
+
+
+@pytest.mark.parametrize("maintenance", ["loading", "rebuilding", "failed", "stopping"])
+def test_dispatch_rechecks_admission_before_sending(maintenance):
+    async def run():
+        sent = []
+
+        async def send(msg):
+            sent.append(msg)
+
+        state = _FakeState(send, maintenance_state=maintenance)
+        result = await dispatch_rebuild(state, moe_cache_size=8, num_pages=None)
+        assert result["status"] == "failed"
+        assert state.maintenance_state == maintenance
+        assert sent == []
+        assert state.rebuild_futures == {}
+        assert state._active_rebuild_id is None
+
+    asyncio.run(run())
+
+
+@pytest.mark.parametrize("status", ["ok", "failed"])
+def test_unrelated_reply_preserves_active_operation_and_geometry(status):
+    async def run():
+        state = _FakeState(None, maintenance_state="rebuilding", active_rebuild_id="r2")
+        previous = {"request_id": "r0", "num_pages": 64}
+        state.last_rebuild = previous
+        fut = asyncio.get_running_loop().create_future()
+        state.rebuild_futures["r2"] = fut
+        try:
+            FrontendManager._resolve_rebuild(state, _reply("r1", status, num_pages=999))
+            assert state.maintenance_state == "rebuilding"
+            assert state._active_rebuild_id == "r2"
+            assert state.last_rebuild is previous
+            assert state.rebuild_futures == {"r2": fut}
+            assert not fut.done()
+        finally:
+            fut.cancel()
+
+    asyncio.run(run())
+
+
+@pytest.mark.parametrize("terminal", ["failed", "stopping"])
+@pytest.mark.parametrize("status", ["ok", "busy", "rejected", "unsupported"])
+def test_matching_reply_cannot_reopen_terminal_gate(terminal, status):
+    async def run():
+        state = _FakeState(None, maintenance_state=terminal, active_rebuild_id="r1")
+        fut = asyncio.get_running_loop().create_future()
+        state.rebuild_futures["r1"] = fut
+        FrontendManager._resolve_rebuild(state, _reply("r1", status, num_pages=64))
+        assert state.maintenance_state == terminal
+        assert state._active_rebuild_id is None
+        assert fut.result()["num_pages"] == 64
+        assert state.rebuild_futures == {}
+
+    asyncio.run(run())
+
+
+def test_duplicate_ok_after_failed_reply_does_not_resurrect_cache():
+    state = _FakeState(None, maintenance_state="rebuilding", active_rebuild_id="r1")
+    FrontendManager._resolve_rebuild(state, _reply("r1", "failed", num_pages=64))
+    failed_result = state.last_rebuild
+    FrontendManager._resolve_rebuild(state, _reply("r1", "ok", num_pages=999))
+    assert state.maintenance_state == "failed"
+    assert state.last_rebuild is failed_result
+    assert state._active_rebuild_id is None
+
+
+def test_unknown_matching_status_is_not_permission_to_serve():
+    state = _FakeState(None, maintenance_state="rebuilding", active_rebuild_id="r1")
+    FrontendManager._resolve_rebuild(state, _reply("r1", "future-status"))
+    assert state.maintenance_state == "failed"
+    assert state._active_rebuild_id is None
+
+
+@pytest.mark.parametrize("phase", ["send", "reply"])
+def test_cancelled_http_wait_retains_backend_identity(phase):
+    async def run():
+        sent = []
+        started = asyncio.Event()
+        hold_send = asyncio.Event()
+
+        async def send(msg):
+            sent.append(msg)
+            started.set()
+            if phase == "send":
+                await hold_send.wait()
+
+        state = _FakeState(send)
+        task = asyncio.create_task(dispatch_rebuild(state, moe_cache_size=8, num_pages=None))
+        await started.wait()
+        request_id = sent[0].request_id
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+        assert state.rebuild_futures == {}
+        assert state._active_rebuild_id == request_id
+        assert state.maintenance_state == "rebuilding"
+        FrontendManager._resolve_rebuild(state, _reply(request_id, "ok", num_pages=64))
+        assert state.maintenance_state == "serving"
+        assert state._active_rebuild_id is None
+
+    asyncio.run(run())
+
+
+def test_previous_reply_cannot_complete_a_new_dispatch():
+    async def run():
+        sent = []
+        started = asyncio.Event()
+
+        async def send(msg):
+            sent.append(msg)
+            started.set()
+
+        state = _FakeState(send)
+        first = asyncio.create_task(dispatch_rebuild(state, moe_cache_size=8, num_pages=None))
+        await started.wait()
+        r1 = sent[-1].request_id
+        FrontendManager._resolve_rebuild(state, _reply(r1, "ok", num_pages=64))
+        assert (await first)["status"] == "ok"
+        started.clear()
+        second = asyncio.create_task(dispatch_rebuild(state, moe_cache_size=16, num_pages=None))
+        await started.wait()
+        r2 = sent[-1].request_id
+        assert r1 != r2
+        FrontendManager._resolve_rebuild(state, _reply(r1, "ok", num_pages=999))
+        assert not second.done()
+        assert state.maintenance_state == "rebuilding"
+        assert state._active_rebuild_id == r2
+        assert state.last_rebuild["num_pages"] == 64
+        FrontendManager._resolve_rebuild(state, _reply(r2, "ok", num_pages=128))
+        assert (await second)["num_pages"] == 128
+        assert state.maintenance_state == "serving"
+
+    asyncio.run(run())
+
+
+@pytest.mark.parametrize("failure_first", [False, True])
+def test_ready_and_failure_order_always_ends_failed(failure_first):
+    state = _FakeState(None, maintenance_state="loading")
+    if failure_first:
+        _mark_backend_failed(state, "scheduler exited")
+        assert _mark_backend_ready(state) is False
+    else:
+        assert _mark_backend_ready(state) is True
+        _mark_backend_failed(state, "scheduler exited")
+    assert state.maintenance_state == "failed"
+    assert state.fatal_error == "scheduler exited"
+
+
+def test_failure_thread_is_not_blocked_by_awaited_send():
+    async def run():
+        async def send(_msg):
+            await asyncio.wait_for(
+                asyncio.to_thread(_mark_backend_failed, state, "scheduler exited"),
+                timeout=2.0,
+            )
+            raise RuntimeError("send failed after worker death")
+
+        state = _FakeState(send)
+        result = await dispatch_rebuild(state, moe_cache_size=8, num_pages=None)
+        assert "send failed after worker death" in result["error"]
+        assert state.fatal_error == "scheduler exited"
+        assert state.maintenance_state == "failed"
+        assert state.rebuild_futures == {}
+
+    asyncio.run(run())
+
+
+def test_fatal_evidence_blocks_generation_even_with_stale_serving_label():
+    manager = FrontendManager(
+        config=SimpleNamespace(served_model_name="model-a"),
+        send_tokenizer=None, recv_tokenizer=None,
+        maintenance_state="serving", fatal_error="scheduler exited",
+    )
+    with pytest.raises(AdmissionClosedError):
+        manager.new_user()
+    assert manager.stats.active == 0
+    assert manager.ack_map == {}
+    assert manager.event_map == {}
+
+
+def test_old_send_error_cannot_clear_a_newer_operation():
+    async def run():
+        sent = []
+        second_started = asyncio.Event()
+        second = None
+
+        async def send(msg):
+            nonlocal second
+            sent.append(msg)
+            if len(sent) == 1:
+                FrontendManager._resolve_rebuild(state, _reply(msg.request_id, "ok"))
+                second = asyncio.create_task(
+                    dispatch_rebuild(state, moe_cache_size=16, num_pages=None)
+                )
+                await second_started.wait()
+                raise RuntimeError("old send failed after its reply")
+            second_started.set()
+
+        state = _FakeState(send)
+        result = await dispatch_rebuild(state, moe_cache_size=8, num_pages=None)
+        assert result["status"] == "failed"
+        r2 = sent[1].request_id
+        assert state._active_rebuild_id == r2
+        assert state.maintenance_state == "rebuilding"
+        assert set(state.rebuild_futures) == {r2}
+        assert second is not None and not second.done()
+        FrontendManager._resolve_rebuild(state, _reply(r2, "ok", num_pages=128))
+        assert (await second)["num_pages"] == 128
+        assert state.rebuild_futures == {}
+
+    asyncio.run(run())

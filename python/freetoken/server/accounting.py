@@ -10,6 +10,7 @@ longer race the last sampled-token reply.
 from __future__ import annotations
 
 import asyncio
+import threading
 import time
 from ipaddress import IPv6Address, ip_address
 from typing import Any, Callable
@@ -17,6 +18,10 @@ from typing import Any, Callable
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
+
+
+# One frontend per process; share short state transitions with its supervisor thread.
+MAINTENANCE_LOCK = threading.RLock()
 
 
 class AdmissionClosedError(RuntimeError):
@@ -63,15 +68,16 @@ async def prepare_stop_accounting(
         if sealed is not None:
             return dict(sealed)
 
-        maintenance = getattr(state, "maintenance_state", "serving")
-        if maintenance == "rebuilding":
-            raise AccountingDrainError("cache rebuild is in progress; retry stop after it finishes")
-        if maintenance not in {"loading", "serving", "stopping", "failed"}:
-            raise AccountingDrainError(f"engine cannot prepare stop from state {maintenance!r}")
-
-        # This assignment and FrontendManager.new_user's check run on the same event loop, making
-        # the generation gate atomic with respect to every protocol adapter.
-        state.maintenance_state = "stopping"
+        with MAINTENANCE_LOCK:
+            maintenance = getattr(state, "maintenance_state", "serving")
+            if maintenance == "rebuilding":
+                raise AccountingDrainError("cache rebuild is in progress; retry stop after it finishes")
+            if maintenance not in {"loading", "serving", "stopping", "failed"}:
+                raise AccountingDrainError(f"engine cannot prepare stop from state {maintenance!r}")
+            if maintenance == "failed" or getattr(state, "fatal_error", None) is not None:
+                state.maintenance_state = "failed"
+            else:
+                state.maintenance_state = "stopping"
 
         stats = state.stats
         drained = await _wait_for_idle(stats, drain_timeout_s)
