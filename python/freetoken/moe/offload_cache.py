@@ -23,6 +23,16 @@ def _fused_copy_enabled() -> bool:
 
 _FUSED_COPY = _fused_copy_enabled()
 
+# Debug: raise right after every (non-captured) copy_missing if the copy kernels skipped
+# out-of-range work. Costs a host sync per copy; off by default.
+_CHECK_COPY_BOUNDS = os.getenv("FREETOKEN_CHECK_COPY_BOUNDS", "").strip().lower() in {
+    "1", "true", "yes", "on"
+}
+_COPY_STATUS_REASONS = (
+    (1, "device copy count outside [0, len(indices)]"),
+    (2, "slot or expert index outside the bank rows"),
+)
+
 # cudaMemcpyBatchAsync silently degrades to a SYNCHRONOUS copy when a batch mixes
 # large entries with sub-~256KB entries on registered host memory (H100 + CUDA 13.0,
 # empirically bisected: a single 5-22KB entry beside one large entry blocks the
@@ -210,6 +220,8 @@ class OffloadMoeCache:
         self.evict_slots = torch.empty((plan_slots,), dtype=torch.int32, device=self.device)
         self.src_indices = torch.empty((plan_slots,), dtype=torch.int32, device=self.device)
         self.num_indices = torch.zeros((1,), dtype=torch.int64, device=self.device)
+        # Sticky bounds-violation bits from the copy kernels (see check_copy_status).
+        self.copy_status = torch.zeros((1,), dtype=torch.int32, device=self.device)
         # hybrid only: full missing count BEFORE the per-step fetch cap (num_indices holds
         # the capped count that copy_missing actually fetches). The difference is what the
         # CPU computes this step. Written by the hybrid ensure kernel.
@@ -803,6 +815,9 @@ class OffloadMoeCache:
                 self._prefill_hit_dst,
                 self._prefill_hit_src,
                 self._prefill_hit_num,
+                dst_rows=self.cache_size,
+                src_rows=self.cache_size,
+                status=self.copy_status,
                 blocks_per_bank=64,
             )
         miss = np.nonzero(~hit_mask)[0]
@@ -947,6 +962,7 @@ class OffloadMoeCache:
         self.stat_steps_layer[layer_id] += 1
 
     def decode_miss_stats(self) -> dict:
+        self.check_copy_status()
         if self.decode_target == "hybrid":
             active = int(self.stat_active.item())
             missing = int(self.stat_missing.item())
@@ -1059,7 +1075,11 @@ class OffloadMoeCache:
                 self.evict_slots,
                 self.src_indices,
                 self.num_indices,
+                dst_rows=self.cache_size,
+                src_rows=self.num_experts,
+                status=self.copy_status,
             )
+            self._maybe_check_copy_status()
             return
 
         from freetoken.kernel import fast_index_copy_jit
@@ -1071,7 +1091,28 @@ class OffloadMoeCache:
                 per_layer[layer_id],
                 self.src_indices,
                 self.num_indices,
+                status=self.copy_status,
             )
+        self._maybe_check_copy_status()
+
+    def _maybe_check_copy_status(self) -> None:
+        if _CHECK_COPY_BOUNDS and not torch.cuda.is_current_stream_capturing():
+            self.check_copy_status()
+
+    def check_copy_status(self) -> None:
+        """Raise if a copy kernel skipped out-of-range work since the last check.
+
+        The kernels never access memory outside the index arrays or bank rows; they skip
+        the offending work and OR a bit into ``copy_status``. Reading it is a host sync, so
+        this runs only on demand, in ``decode_miss_stats*`` and under
+        ``FREETOKEN_CHECK_COPY_BOUNDS=1``. Skipped work means experts may be stale.
+        """
+        bits = int(self.copy_status.item())
+        if not bits:
+            return
+        self.copy_status.zero_()
+        reasons = ", ".join(text for bit, text in _COPY_STATUS_REASONS if bits & bit)
+        raise RuntimeError(f"MoE expert copy skipped out-of-range work: {reasons} (status={bits})")
 
 
 def iter_offload_moe_layers(model) -> Iterator:

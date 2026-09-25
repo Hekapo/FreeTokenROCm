@@ -216,6 +216,11 @@ inline void* device_alias(void* ptr, DLDevice dev) {
     return mapped;
 }
 
+// Bits of the optional copy status word. On a violation the kernels skip the work
+// instead of reading past the index arrays or touching rows outside dst/src.
+inline constexpr int32_t kCopyBadCount = 1;  // device count < 0 or > indices length
+inline constexpr int32_t kCopyBadIndex = 2;  // an index outside [0, rows)
+
 struct IndexKernelParams {
     void* __restrict__ dst;
     const void* __restrict__ indices_dst;
@@ -223,6 +228,9 @@ struct IndexKernelParams {
     const void* __restrict__ indices_src;
     std::size_t length;
     const int64_t* __restrict__ valid_length;
+    std::size_t dst_rows;
+    std::size_t src_rows;
+    int32_t* __restrict__ status; // [1] or null; sticky kCopyBad* bits
 };
 
 /*
@@ -267,10 +275,21 @@ __global__ __launch_bounds__(kNumThreads, kMaxOccupancy) void fast_index_copy(
     
     const auto& [
         dst_ptr, indices_dst, src_ptr, indices_src,
-        length, valid_length_ptr
+        length, valid_length_ptr, dst_rows, src_rows, status
     ] = params;
 
-    const auto length_limit = valid_length_ptr ? static_cast<std::size_t>(valid_length_ptr[0]) : length;
+    auto length_limit = length;
+    if (valid_length_ptr) {
+        const auto count = valid_length_ptr[0];
+        if (count >= 0 && static_cast<std::size_t>(count) <= length) {
+            length_limit = static_cast<std::size_t>(count);
+        } else {
+            length_limit = 0;
+            if (status && blockIdx.x == 0 && threadIdx.x == 0) {
+                atomicOr(status, kCopyBadCount);
+            }
+        }
+    }
     
     static_assert(kFeatureBytes % kWorkersFeatures == 0, "kFeatureBytes must be multiple of kWorkersFeatures");
     const auto kWorkersPerIndex = ((kFeatureBytes + kWorkersFeatures - 1) / kWorkersFeatures); // TODO: support not divisible
@@ -304,6 +323,14 @@ __global__ __launch_bounds__(kNumThreads, kMaxOccupancy) void fast_index_copy(
         const auto index_subid = i % kWorkersPerIndex;
         const auto pos_src = static_cast<const IdType*>(indices_src)[index_id];
         const auto pos_dst = static_cast<const IdType*>(indices_dst)[index_id];
+        // every thread of a worker sees the same index, so the whole worker skips together
+        if (pos_src < 0 || static_cast<std::size_t>(pos_src) >= src_rows ||
+            pos_dst < 0 || static_cast<std::size_t>(pos_dst) >= dst_rows) {
+            if (status && index_subid == 0 && threadIdx.x % kWorkerThreads == 0) {
+                atomicOr(status, kCopyBadIndex);
+            }
+            continue;
+        }
 
         const auto col = index_subid * kWorkersFeatures;
         const auto src_base = pointer::offset(src_ptr, pos_src * kFeatureBytes + col);
@@ -389,6 +416,7 @@ struct FastIndexCopyKernel {
         tvm::ffi::TensorView src_indices,
         tvm::ffi::Optional<tvm::ffi::TensorView> num_indices,
         tvm::ffi::Optional<tvm::ffi::TensorView> sync_flag,
+        tvm::ffi::Optional<tvm::ffi::TensorView> status,
         PriorityMode mode
     ) {
         using namespace host;
@@ -427,6 +455,15 @@ struct FastIndexCopyKernel {
             num_indices_data_ptr = static_cast<const int64_t*>(num_indices_tensor.data_ptr());
         }
 
+        int32_t* status_ptr = nullptr;
+        if (status.has_value()) {
+            TensorMatcher({1})
+                .with_dtype<int32_t>()
+                .with_device<kDLCUDA, kDLROCM>(device)
+                .verify(status.value());
+            status_ptr = static_cast<int32_t*>(status.value().data_ptr());
+        }
+
         // verify dimension match
         const auto dtype_size = dtype_bytes(data_dtype.unwrap());
         const auto element_bytes = D.unwrap() * dtype_size;
@@ -446,7 +483,10 @@ struct FastIndexCopyKernel {
             src_ptr,
             src_indices_ptr,
             length,
-            num_indices_data_ptr
+            num_indices_data_ptr,
+            static_cast<std::size_t>(dst.size(0)),
+            static_cast<std::size_t>(src.size(0)),
+            status_ptr
         };
 
         int32_t* sync_flag_ptr = nullptr;
@@ -484,7 +524,8 @@ struct FastIndexCopyKernel {
         tvm::ffi::TensorView dst_indices,
         tvm::ffi::TensorView src,
         tvm::ffi::TensorView src_indices,
-        tvm::ffi::Optional<tvm::ffi::TensorView> num_indices
+        tvm::ffi::Optional<tvm::ffi::TensorView> num_indices,
+        tvm::ffi::Optional<tvm::ffi::TensorView> status
     ) {
         run_impl(
             dst,
@@ -493,6 +534,7 @@ struct FastIndexCopyKernel {
             src_indices,
             num_indices,
             tvm::ffi::Optional<tvm::ffi::TensorView>{},
+            status,
             PriorityMode::kDefault
         );
     }
@@ -503,9 +545,10 @@ struct FastIndexCopyKernel {
         tvm::ffi::TensorView src,
         tvm::ffi::TensorView src_indices,
         tvm::ffi::Optional<tvm::ffi::TensorView> num_indices,
-        tvm::ffi::TensorView sync_flag
+        tvm::ffi::TensorView sync_flag,
+        tvm::ffi::Optional<tvm::ffi::TensorView> status
     ) {
-        run_impl(dst, dst_indices, src, src_indices, num_indices, sync_flag, PriorityMode::kHigh);
+        run_impl(dst, dst_indices, src, src_indices, num_indices, sync_flag, status, PriorityMode::kHigh);
     }
 
     static void run_normal(
@@ -514,9 +557,10 @@ struct FastIndexCopyKernel {
         tvm::ffi::TensorView src,
         tvm::ffi::TensorView src_indices,
         tvm::ffi::Optional<tvm::ffi::TensorView> num_indices,
-        tvm::ffi::TensorView sync_flag
+        tvm::ffi::TensorView sync_flag,
+        tvm::ffi::Optional<tvm::ffi::TensorView> status
     ) {
-        run_impl(dst, dst_indices, src, src_indices, num_indices, sync_flag, PriorityMode::kNormal);
+        run_impl(dst, dst_indices, src, src_indices, num_indices, sync_flag, status, PriorityMode::kNormal);
     }
 };
 
@@ -539,6 +583,9 @@ struct MultiIndexCopyParams {
     const int64_t* __restrict__ valid_length; // [1] or null
     int64_t length;                           // max L
     int num_banks;
+    int64_t dst_rows;                         // rows of every bank's slot cache
+    int64_t src_rows;                         // rows of every bank's source
+    int32_t* __restrict__ status;             // [1] or null; sticky kCopyBad* bits
 };
 
 template <typename IdType, std::size_t kNumThreads, std::size_t kBlocksPerBank>
@@ -553,7 +600,13 @@ __global__ __launch_bounds__(kNumThreads) void fast_index_copy_multi(
     const auto* src = reinterpret_cast<const uint8_t*>(p.src_ptrs[b]);
     auto* dst = reinterpret_cast<uint8_t*>(p.dst_ptrs[b]);
     const int64_t feat = p.feat_bytes[b];
-    const int64_t n = p.valid_length ? p.valid_length[0] : p.length;
+    int64_t n = p.valid_length ? p.valid_length[0] : p.length;
+    if (n < 0 || n > p.length) {
+        if (p.status && blockIdx.x == 0 && threadIdx.x == 0) {
+            atomicOr(p.status, kCopyBadCount);
+        }
+        n = 0;
+    }
     const int64_t units = feat >> 4;  // 16-byte (uint4) units per row; feat % 16 == 0
     const int64_t total = n * units;
     const auto* di = static_cast<const IdType*>(p.dst_indices);
@@ -564,6 +617,12 @@ __global__ __launch_bounds__(kNumThreads) void fast_index_copy_multi(
         const int64_t col = (u - row * units) << 4;  // byte offset within the row
         const int64_t pd = static_cast<int64_t>(di[row]);
         const int64_t ps = static_cast<int64_t>(si[row]);
+        if (pd < 0 || pd >= p.dst_rows || ps < 0 || ps >= p.src_rows) {
+            if (p.status && col == 0) {
+                atomicOr(p.status, kCopyBadIndex);
+            }
+            continue;
+        }
         const uint4 v = *reinterpret_cast<const uint4*>(src + ps * feat + col);
         *reinterpret_cast<uint4*>(dst + pd * feat + col) = v;
     }
@@ -577,7 +636,10 @@ struct MultiIndexCopyKernel {
         tvm::ffi::TensorView feat_bytes,
         tvm::ffi::TensorView dst_indices,
         tvm::ffi::TensorView src_indices,
-        tvm::ffi::Optional<tvm::ffi::TensorView> num_indices
+        tvm::ffi::Optional<tvm::ffi::TensorView> num_indices,
+        int64_t dst_rows,
+        int64_t src_rows,
+        tvm::ffi::Optional<tvm::ffi::TensorView> status
     ) {
         using namespace host;
         auto device = SymbolicDevice{};
@@ -591,6 +653,13 @@ struct MultiIndexCopyKernel {
             .verify(dst_ptrs).verify(src_ptrs).verify(feat_bytes);
         TensorMatcher({L}).with_dtype<int32_t, int64_t>(indices_dtype).with_device<kDLCUDA, kDLROCM>(device)
             .verify(dst_indices).verify(src_indices);
+        RuntimeCheck(dst_rows >= 0 && src_rows >= 0, "MultiIndexCopyKernel: negative row count.");
+        int32_t* status_ptr = nullptr;
+        if (status.has_value()) {
+            TensorMatcher({1}).with_dtype<int32_t>().with_device<kDLCUDA, kDLROCM>(device)
+                .verify(status.value());
+            status_ptr = static_cast<int32_t*>(status.value().data_ptr());
+        }
 
         const int64_t* valid_length = nullptr;
         if (num_indices.has_value()) {
@@ -610,6 +679,9 @@ struct MultiIndexCopyKernel {
             valid_length,
             static_cast<int64_t>(L.unwrap()),
             num_banks,
+            dst_rows,
+            src_rows,
+            status_ptr,
         };
         const auto use_int32 = indices_dtype.unwrap().bits == 32;
         const auto kernel = use_int32
