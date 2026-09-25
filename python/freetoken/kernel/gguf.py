@@ -179,9 +179,13 @@ def _windows_hip_link_flags():
     original_hipify = hipify_python.hipify
     original_write_ninja = cpp_extension._write_ninja_file
 
-    def prepare_ldflags(extra_ldflags, with_cuda, verbose, is_standalone):
-        if not with_cuda:
-            return original(extra_ldflags, with_cuda, verbose, is_standalone)
+    def prepare_ldflags(extra_ldflags, with_cuda, *rest):
+        # newer torch (2.13; not 2.9.1) inserts with_sycl:
+        # (extra_ldflags, with_cuda, [with_sycl,] verbose, is_standalone)
+        with_sycl = len(rest) == 3 and rest[0]
+        if not with_cuda or with_sycl:
+            return original(extra_ldflags, with_cuda, *rest)
+        is_standalone = rest[-1]
 
         flags = list(extra_ldflags)
         flags += [
