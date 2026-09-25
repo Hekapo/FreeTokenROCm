@@ -388,6 +388,8 @@ public:
   auto with_dtype(DTypeRef &&dtype) && -> TensorMatcher && {
     m_init_dtype();
     m_dtype.rebind(*dtype);
+    // Ts constrain this matcher only; the symbol's own options are kept.
+    m_dtype_allowed = details::kDTypeList<Ts...>;
     return std::move(*this);
   }
 
@@ -403,6 +405,8 @@ public:
   auto with_device(DeviceRef &&device) && -> TensorMatcher && {
     m_init_device();
     m_device.rebind(*device);
+    // Codes constrain this matcher only; the symbol's own options are kept.
+    m_device_allowed = details::kDeviceList<Codes...>;
     return std::move(*this);
   }
 
@@ -473,6 +477,10 @@ private:
       RuntimeCheck(view.is_contiguous(),
                    "Tensor is not contiguous as expected");
     }
+    // check allowlists before the shared symbols can bind a rejected value;
+    // an empty list (no template arguments) adds no constraint
+    m_check_allowed<SymbolicDType>(m_dtype_allowed, view.dtype());
+    m_check_allowed<SymbolicDevice>(m_device_allowed, view.device());
     // since we may double verify, we will force to check
     m_dtype->verify(view.dtype());
     m_device->verify(view.device());
@@ -487,11 +495,22 @@ private:
     m_has_device = true;
   }
   auto m_has_strides() const -> bool { return !m_strides.empty(); }
+  // reuse the symbol's own membership rule (incl. device-id wildcard)
+  template <typename Symbol, typename T>
+  static auto m_check_allowed(std::span<const T> allowed,
+                              std::type_identity_t<T> value) -> void {
+    auto probe = Symbol{};
+    probe.set_options(allowed);
+    probe.set_value(value);
+  }
 
   std::span<const SizeRef> m_shape;
   std::span<const SizeRef> m_strides;
   DTypeRef m_dtype;
   DeviceRef m_device;
+  // static storage from kDTypeList / kDeviceList; empty when not requested
+  std::span<const DLDataType> m_dtype_allowed;
+  std::span<const DLDevice> m_device_allowed;
   bool m_has_dtype = false;
   bool m_has_device = false;
 };
