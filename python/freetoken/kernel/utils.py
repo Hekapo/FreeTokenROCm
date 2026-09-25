@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import importlib
 import os
 import pathlib
@@ -158,6 +159,66 @@ def _windows_hip_tvm_ffi_flags(enabled: bool):
         extension._generate_ninja_build = original
 
 
+# Pinned tvm-ffi declares `depfile = $out.d` / `deps = gcc` for HIP but never asks
+# hipcc to write it, so ninja records no header dependencies and an edited
+# tensor.h or *.cuh never rebuilds an existing JIT build directory.
+_HIP_COMPILE_COMMAND = "  command = $nvcc $cuda_cflags -c $in -o $out"
+_HIP_COMPILE_COMMAND_WITH_DEPFILE = "  command = $nvcc -MD -MF $out.d $cuda_cflags -c $in -o $out"
+
+
+def _add_hip_depfile(ninja: str) -> str:
+    if "rule compile_cuda" not in ninja or _HIP_COMPILE_COMMAND_WITH_DEPFILE in ninja:
+        return ninja
+    if ninja.count(_HIP_COMPILE_COMMAND) != 1:
+        raise RuntimeError(
+            "Pinned tvm-ffi HIP compile rule changed; refusing an unverified depfile rewrite"
+        )
+    return ninja.replace(_HIP_COMPILE_COMMAND, _HIP_COMPILE_COMMAND_WITH_DEPFILE)
+
+
+@contextmanager
+def _hip_depfile_tvm_ffi_rule(enabled: bool):
+    """Make pinned tvm-ffi's HIP compile rule emit the depfile ninja expects."""
+    if not enabled:
+        yield
+        return
+
+    from tvm_ffi.cpp import extension
+
+    original = extension._generate_ninja_build
+
+    def generate_ninja(*args, **kwargs):
+        return _add_hip_depfile(original(*args, **kwargs))
+
+    extension._generate_ninja_build = generate_ninja
+    try:
+        yield
+    finally:
+        extension._generate_ninja_build = original
+
+
+def _rocm_compat_link_dir(runtime: pathlib.Path) -> pathlib.Path:
+    """Namespace a linker alias by its canonical runtime path and contents."""
+    runtime = runtime.resolve(strict=True)
+    digest = hashlib.sha256(os.fsencode(str(runtime)) + b"\0")
+    with runtime.open("rb") as source:
+        for chunk in iter(lambda: source.read(1 << 20), b""):
+            digest.update(chunk)
+    cache_root = pathlib.Path(
+        os.environ.get("XDG_CACHE_HOME") or pathlib.Path.home() / ".cache"
+    ).expanduser().resolve()
+    link_dir = cache_root / "freetoken" / "rocm-lib" / digest.hexdigest()
+    link_dir.mkdir(parents=True, exist_ok=True)
+    link = link_dir / "libamdhip64.so"
+    try:
+        link.symlink_to(runtime)
+    except FileExistsError:
+        pass  # Another process may have installed the same immutable alias.
+    if not link.is_symlink() or link.resolve(strict=True) != runtime:
+        raise RuntimeError(f"ROCm compatibility link does not match selected runtime: {link}")
+    return link_dir
+
+
 @cache
 def _rocm_link_flags() -> List[str]:
     """Make ROCm's runtime library discoverable to JIT link commands.
@@ -176,19 +237,19 @@ def _rocm_link_flags() -> List[str]:
             continue
         unversioned = library_dir / "libamdhip64.so"
         link_dir = library_dir
-        if not unversioned.exists():
-            versioned = sorted(library_dir.glob("libamdhip64.so.*"))
-            if not versioned:
+        if not unversioned.is_file():
+            runtimes = sorted({
+                path.resolve(strict=True)
+                for path in library_dir.glob("libamdhip64.so.*") if path.is_file()
+            })
+            if not runtimes:
                 continue
-            link_dir = pathlib.Path.home() / ".cache" / "freetoken" / "rocm-lib"
-            link_dir.mkdir(parents=True, exist_ok=True)
-            compat_link = link_dir / "libamdhip64.so"
-            if not compat_link.exists() and not compat_link.is_symlink():
-                try:
-                    compat_link.symlink_to(versioned[-1])
-                except FileExistsError:
-                    # Multiple tensor-parallel ranks may prepare the same cache.
-                    pass
+            if len(runtimes) != 1:
+                raise RuntimeError(
+                    f"Multiple HIP runtimes under {library_dir}; select an SDK with "
+                    "an authoritative libamdhip64.so alias or one runtime"
+                )
+            link_dir = _rocm_compat_link_dir(runtimes[0])
 
         return [f"-L{link_dir}", f"-Wl,-rpath,{library_dir}"]
 
@@ -381,7 +442,8 @@ def load_aot(
         cuda_cflags = _cuda_cflags(extra_cuda_cflags)
         runtime_ldflags = []
 
-    with _windows_hip_tvm_ffi_flags(_is_rocm() and bool(cuda_files)):
+    hip = _is_rocm() and bool(cuda_files)
+    with _windows_hip_tvm_ffi_flags(hip), _hip_depfile_tvm_ffi_rule(hip):
         return load(
             name,
             cpp_files=cpp_files,
@@ -445,7 +507,8 @@ def load_jit(
         cuda_cflags = _cuda_cflags(extra_cuda_cflags)
         runtime_ldflags = []
 
-    with _windows_hip_tvm_ffi_flags(_is_rocm() and bool(cuda_sources)):
+    hip = _is_rocm() and bool(cuda_sources)
+    with _windows_hip_tvm_ffi_flags(hip), _hip_depfile_tvm_ffi_rule(hip):
         return load_inline(
             name,
             cpp_sources=cpp_sources,

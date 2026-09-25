@@ -60,3 +60,66 @@ def test_store_jit_matches_torch_on_cold_and_warm_loads(index_dtype):
     untouched = torch.tensor([1, 2, 4, 6, 7], device="cuda")
     torch.testing.assert_close(k_cache[untouched], torch.zeros((5, 64), device="cuda"))
     torch.testing.assert_close(v_cache[untouched], torch.zeros((5, 64), device="cuda"))
+
+
+# The empty and overlap cases below are rejected or skipped on the host before any launch.
+
+
+@pytest.mark.parametrize("index_dtype", [torch.int32, torch.int64])
+@pytest.mark.parametrize("vocab_range", [None, (10, 6)])
+def test_empty_indexing_returns_empty_rows(index_dtype, vocab_range):
+    weights = torch.arange(8 * 64, dtype=torch.float32, device="cuda").reshape(8, 64)
+    indices = torch.empty((0,), dtype=index_dtype, device="cuda")
+
+    actual = indexing(weights, indices, vocab_range=vocab_range)
+    torch.cuda.synchronize()
+
+    assert actual.shape == (0, 64)
+    assert actual.dtype == weights.dtype
+
+
+def test_empty_indexing_still_checks_row_width():
+    weights = torch.zeros((8, 64), dtype=torch.float32, device="cuda")
+    indices = torch.empty((0,), dtype=torch.int32, device="cuda")
+    output = torch.empty((0, 32), dtype=torch.float32, device="cuda")
+
+    with pytest.raises(Exception, match="Tensor match failed"):
+        indexing(weights, indices, output=output)
+
+
+@pytest.mark.parametrize("index_dtype", [torch.int32, torch.int64])
+def test_empty_store_leaves_cache_untouched(index_dtype):
+    k_cache = torch.full((8, 64), 7.0, dtype=torch.float32, device="cuda")
+    v_cache = torch.full_like(k_cache, 9.0)
+    indices = torch.empty((0,), dtype=index_dtype, device="cuda")
+    k = torch.empty((0, 64), dtype=torch.float32, device="cuda")
+
+    store_cache(k_cache, v_cache, indices, k, k.clone())
+    torch.cuda.synchronize()
+
+    torch.testing.assert_close(k_cache, torch.full_like(k_cache, 7.0))
+    torch.testing.assert_close(v_cache, torch.full_like(v_cache, 9.0))
+
+
+def test_empty_store_still_checks_input_width():
+    k_cache = torch.zeros((8, 64), dtype=torch.float32, device="cuda")
+    indices = torch.empty((0,), dtype=torch.int32, device="cuda")
+    k = torch.empty((0, 32), dtype=torch.float32, device="cuda")
+
+    with pytest.raises(Exception, match="Tensor match failed"):
+        store_cache(k_cache, torch.zeros_like(k_cache), indices, k, k.clone())
+
+
+@pytest.mark.parametrize("row_stride", [0, 32])  # 0 needs D6 to bind a zero stride
+def test_store_rejects_aliased_cache_rows(row_stride):
+    # overlapping rows: distinct indices would write the same memory
+    def aliased():
+        storage = torch.zeros(7 * row_stride + 64, dtype=torch.float32, device="cuda")
+        return storage.as_strided((8, 64), (row_stride, 1))
+
+    k_cache, v_cache = aliased(), aliased()
+    indices = torch.tensor([5, 0, 3], dtype=torch.int32, device="cuda")
+    k = torch.ones((3, 64), dtype=torch.float32, device="cuda")
+
+    with pytest.raises(Exception, match="kv cache rows overlap"):
+        store_cache(k_cache, v_cache, indices, k, k.clone())

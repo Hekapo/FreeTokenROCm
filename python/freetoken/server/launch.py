@@ -49,6 +49,22 @@ def _report_startup_error(ack_queue: mp.Queue, exc: BaseException) -> None:
         pass
 
 
+def _drain_device_before_exit() -> None:
+    """Wait for queued GPU work before a worker dies of an exception.
+
+    On Windows/ROCm a process that exits with kernels or copies still queued can hang forever
+    at interpreter shutdown, keeping the GPU context (and the supervisor's view of the worker)
+    alive. The orderly ^C path already drains via Scheduler.shutdown(). Best-effort: a failure
+    here must never replace the original exception."""
+    try:
+        import torch
+
+        if torch.cuda.is_available() and torch.cuda.is_initialized():
+            torch.cuda.synchronize()
+    except Exception:  # noqa: BLE001 -- draining is a nicety; never shadow the real exception
+        pass
+
+
 def _detach_process_group() -> None:
     """Shell mode only: move this worker out of the terminal's foreground process group.
 
@@ -107,6 +123,7 @@ def _run_scheduler(args: ServerArgs, ack_queue: mp.Queue[str]) -> None:
             # reason first so the supervisor (and the desktop failure modal) can surface it;
             # the traceback still prints and the process still exits non-zero.
             _report_startup_error(ack_queue, exc)
+            _drain_device_before_exit()
             raise
 
         if args.tp_info.is_primary():
@@ -141,6 +158,10 @@ def _run_scheduler(args: ServerArgs, ack_queue: mp.Queue[str]) -> None:
                 print()  # for a clean newline after ^C
                 logger.info("Scheduler exiting gracefully...")
             scheduler.shutdown()
+        except BaseException:
+            # A serving/rebuild failure leaves the worker as before; only let the GPU go idle first.
+            _drain_device_before_exit()
+            raise
 
 
 def launch_server(

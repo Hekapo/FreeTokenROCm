@@ -78,6 +78,10 @@ def test_ensure_rocm_env_discovers_modular_sdk_and_visible_arch(monkeypatch, tmp
         "get_device_properties",
         lambda _device: SimpleNamespace(gcnArchName="gfx1201:sramecc-:xnack-"),
     )
+    monkeypatch.setattr(torch.cuda, "current_device", lambda: 0)
+    monkeypatch.setitem(
+        sys.modules, "freetoken.gpu_select", SimpleNamespace(assigned_visible_gpu=lambda: None)
+    )
     _toolchain.ensure_rocm_env.cache_clear()
 
     try:
@@ -150,12 +154,14 @@ def test_rocm_link_flags_support_versioned_modular_sdk(monkeypatch, tmp_path):
     monkeypatch.setattr(cpp_extension, "ROCM_HOME", None)
     monkeypatch.setattr(importlib.util, "find_spec", find_spec)
     monkeypatch.setattr(pathlib.Path, "home", lambda: tmp_path)
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / ".cache"))
     utils._rocm_link_flags.cache_clear()
 
     try:
         flags = utils._rocm_link_flags()
 
-        compat_dir = tmp_path / ".cache" / "freetoken" / "rocm-lib"
+        compat_dir = pathlib.Path(next(flag[2:] for flag in flags if flag.startswith("-L")))
+        assert compat_dir.parent == tmp_path / ".cache" / "freetoken" / "rocm-lib"
         compat_link = compat_dir / "libamdhip64.so"
         assert f"-L{compat_dir}" in flags
         assert f"-Wl,-rpath,{library_dir}" in flags

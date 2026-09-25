@@ -133,6 +133,10 @@ struct IndexKernel {
     const auto entry_size = dtype_bytes(weights_dtype_.unwrap()) * D.unwrap();
     RuntimeCheck(entry_size == element_size,
                  "IndexKernel: element_size mismatch.");
+    // an empty gather is valid once all metadata above matched; a zero grid is not
+    if (num_indices == 0) {
+      return;
+    }
 
     constexpr auto kWarpPerBlock = num_threads / device::kWarpThreads;
     const auto num_warps = num_splits * num_indices;

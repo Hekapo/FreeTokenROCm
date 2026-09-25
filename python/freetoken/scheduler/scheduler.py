@@ -611,9 +611,7 @@ class Scheduler(SchedulerIOMixin):
         req.table_idx = -1
 
     def _reply_rebuild(self, request_id: str, status: str, error: str | None = None) -> None:
-        # Single source of truth with the rollback snapshot (_current_cache_geometry): mamba is
-        # usable slots (padding sink excluded, matching the status-bar gauge), and num_swa_pages
-        # reports 0 unless the model actually has a window pool.
+        # Report usable slots without padding; models without a window pool report zero.
         geo = self._current_cache_geometry()
         self.send_result(
             [
@@ -641,72 +639,26 @@ class Scheduler(SchedulerIOMixin):
             "num_mamba_slots": msg.num_mamba_slots,
             "num_swa_pages": msg.num_swa_pages,
         }
-        # Rollback target: the CURRENT (serving) sizes of ONLY the pools this request touches.
-        # Passing the untouched pools too would trip rebuild_cache's KV/mamba/SWA gate and wipe
-        # the prefix cache that a successful resize of just the requested pool preserves.
-        snapshot = self._current_cache_geometry()
-        prior = {k: snapshot[k] for k, v in requested.items() if v is not None}
-        # Cleared here, set by engine.rebuild_runtime_cache at its point of no return — lets the
-        # except below tell a pre-teardown failure (engine untouched) from a mid-teardown one.
+        # No teardown does not prove device health: synchronization can surface an earlier fault.
+        # Unexpected errors must escape to worker supervision, not trigger in-process rollback.
         self.engine.rebuild_teardown_started = False
         try:
             self.rebuild_cache(**requested)
         except CacheRebuildRejected as e:
-            # Rejected before any destructive free — old cache intact, keep serving.
+            if getattr(self.engine, "rebuild_teardown_started", None) is not False:
+                raise
             logger.warning(f"cache rebuild rejected: {e}")
             self._reply_rebuild(msg.request_id, "rejected", error=str(e))
             return
-        except Exception as e:  # noqa: BLE001
-            if not getattr(self.engine, "rebuild_teardown_started", True):
-                # Failed before the destructive phase began: graphs and pools are untouched and
-                # the engine is still serving. A destructive rollback would only add risk.
-                logger.error(f"cache rebuild failed before teardown: {e!r} — old cache intact")
-                self._reply_rebuild(msg.request_id, "rejected", error=repr(e))
-                return
-            if self.config.tp_info.size > 1:
-                # A lone-rank failure cannot be rolled back symmetrically: rebuild_cache runs TP
-                # barriers, and ranks that succeeded will not re-enter them — a solo rollback
-                # would desync the group. Keep the latch-failed behavior for tp>1.
-                logger.error(f"cache rebuild failed: {e!r} — tp>1, latching failed")
-                self._reply_rebuild(msg.request_id, "failed", error=repr(e))
-                return
-            # The destructive phase failed — typically a CUDA OOM while reallocating a pool or
-            # recapturing graphs. The graphs/pools are already torn down, so the engine cannot
-            # serve as-is. Rather than latch "failed" (which forces a full process restart),
-            # rebuild the touched pools back to the sizes that were serving a moment ago: they
-            # fit before, so shrinking back frees the just-attempted allocation and restores
-            # service. Only if the rollback ALSO fails is the engine genuinely wedged. (Post-OOM
-            # CUDA state is not guaranteed sane — a rollback that succeeds here may still surface
-            # a deferred fault on a later request; that residual risk is accepted over always
-            # forcing a restart.)
-            logger.error(f"cache rebuild failed: {e!r} — rolling back to the previous geometry")
-            try:
-                self.rebuild_cache(**prior)
-            except Exception as e2:  # noqa: BLE001 — rollback failed too; genuinely unrecoverable
-                logger.error(f"cache rebuild rollback failed: {e2!r} — server latched failed")
-                self._reply_rebuild(
-                    msg.request_id,
-                    "failed",
-                    error=f"{e!r}; rollback to the prior geometry also failed: {e2!r}",
-                )
-                return
-            logger.warning("cache rebuild rolled back to the previous geometry — still serving")
-            self._log_cache_geometry("Cache rolled back")
-            self._reply_rebuild(
-                msg.request_id, "rejected", error=f"rebuild failed and was rolled back: {e!r}"
-            )
-            return
-        # Outside the try: an ack/send failure after a fully-applied rebuild must not be
-        # mistaken for a rebuild failure and roll back the geometry the engine now serves.
+        # Keep acknowledgement errors outside the recoverable validation boundary.
         self._log_cache_geometry("Cache rebuilt")
         self._reply_rebuild(msg.request_id, "ok")
 
     def _current_cache_geometry(self) -> dict:
-        """The pools' current (serving) sizes as rebuild_cache kwargs — the rollback snapshot and
-        the single source for _reply_rebuild's readout. None for a pool this model lacks
-        (rebuild_cache skips those; the reply maps them to the wire format's 0). num_swa_pages is
-        the CONCRETE current window (usable pages) so a rollback restores it byte-for-byte,
-        whether it was pinned or ratio-derived."""
+        """Current pool sizes for replies; absent pools map to None.
+
+        Window pages are usable pages, whether pinned or ratio-derived.
+        """
         eng = self.engine
         config = self.config
         mc = config.model_config

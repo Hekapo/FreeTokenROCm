@@ -7,10 +7,12 @@ file by path, so it must not import the freetoken package.
 from __future__ import annotations
 
 import functools
+import logging
 import os
 import re
 import shutil
 import subprocess
+import sys
 
 ALLOW_MISMATCH_ENV = "FREETOKEN_ALLOW_CUDA_MISMATCH"
 _TRUE_VALUES = {"1", "true", "yes", "on"}
@@ -79,13 +81,21 @@ def _ensure_rocm_arch() -> None:
     try:
         if not torch.cuda.is_available():
             return
-        arch = torch.cuda.get_device_properties(0).gcnArchName.split(":", 1)[0].strip()
+        # Setup loads this file by path; consult an already-loaded assignment only.
+        gpu_select = sys.modules.get("freetoken.gpu_select")
+        assigned = gpu_select.assigned_visible_gpu() if gpu_select is not None else None
+        device = torch.cuda.current_device() if assigned is None else assigned
+        arch = torch.cuda.get_device_properties(device).gcnArchName.split(":", 1)[0].strip()
     except Exception:
         return
     if not arch:
         return
     for name in names:
         os.environ.setdefault(name, arch)
+    logging.getLogger(__name__).info(
+        "ROCm JIT target: visible_device=%s detected_arch=%s configured_arches=%s",
+        device, arch, {name: os.environ.get(name) for name in names},
+    )
 
 
 def _nvcc_path() -> str | None:

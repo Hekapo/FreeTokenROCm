@@ -37,7 +37,7 @@ from pydantic import BaseModel
 
 from .args import ServerArgs
 from .anthropic_api import register_anthropic_routes
-from .accounting import AdmissionClosedError, register_accounting_routes
+from .accounting import MAINTENANCE_LOCK, AdmissionClosedError, register_accounting_routes
 from .control_api import register_control_routes
 from .openai_api import register_openai_routes
 from . import request_ring
@@ -57,6 +57,21 @@ _MODEL_SAMPLING: Dict[str, Any] = {}
 # shutdown is treated as expected — no ERROR log, no "failed" latch. See run_backend_supervisor.
 _SHUTTING_DOWN = threading.Event()
 BACKEND_DEATH_EXIT_GRACE_S = 10.0
+
+
+def _mark_backend_ready(state: FrontendManager) -> bool:
+    with MAINTENANCE_LOCK:
+        if state.maintenance_state != "loading" or state.fatal_error is not None:
+            return False
+        state.ready_at = time.monotonic()
+        state.maintenance_state = "serving"
+        return True
+
+
+def _mark_backend_failed(state: FrontendManager, message: str) -> None:
+    with MAINTENANCE_LOCK:
+        state.fatal_error = message
+        state.maintenance_state = "failed"
 
 
 def _get_uvicorn_loop_factory(
@@ -152,6 +167,8 @@ class FrontendManager:
     # Runtime cache-rebuild control plane (correlated by uuid request_id, separate from
     # the int-uid generation ack machinery).
     rebuild_futures: Dict[str, asyncio.Future] = field(default_factory=dict)
+    # HTTP waiters can disappear before the backend finishes; keep its identity separately.
+    _active_rebuild_id: str | None = field(default=None, init=False, repr=False)
     # Lifecycle gate. Starts "loading" (uvicorn binds before weights finish; the three
     # API adapters 503 until this flips) -> "serving" once all workers ack ready ->
     # "rebuilding"/"failed" for runtime cache rebuilds.
@@ -238,16 +255,17 @@ class FrontendManager:
         threading.Thread(target=_warm, daemon=True, name="frontend-tokenizer-warm").start()
 
     def new_user(self) -> int:
-        if self.maintenance_state != "serving":
-            raise AdmissionClosedError(
-                f"server unavailable: engine is {self.maintenance_state}"
-            )
-        uid = self.uid_counter
-        self.uid_counter += 1
-        self.ack_map[uid] = []
-        self.event_map[uid] = asyncio.Event()
-        self.stats.on_new_user(uid)
-        return uid
+        with MAINTENANCE_LOCK:
+            if self.maintenance_state != "serving" or self.fatal_error is not None:
+                raise AdmissionClosedError(
+                    f"server unavailable: engine is {self.maintenance_state}"
+                )
+            uid = self.uid_counter
+            self.uid_counter += 1
+            self.ack_map[uid] = []
+            self.event_map[uid] = asyncio.Event()
+            self.stats.on_new_user(uid)
+            return uid
 
     async def listen(self):
         while True:
@@ -266,36 +284,30 @@ class FrontendManager:
                 self.event_map[msg.uid].set()
 
     def _resolve_rebuild(self, msg: CacheRebuildReply) -> None:
-        """Terminal transition for a rebuild: rebuilding -> serving | failed. This is the ONLY
-        path that reopens the gate dispatch_rebuild latches to "rebuilding", so it must always
-        land on a definite state — including for a reply that arrives after the HTTP wait timed
-        out (its future is already gone) — so a rebuild can never wedge the server in
-        "rebuilding" forever.
-
-        Ordering matters. Wake any waiter and record the result first, then decide the gate:
-          - A fatal worker death latched "failed" (the watchdog) OUTRANKS this reply. A reply
-            that raced a crash (e.g. a buffered "ok") must not resurrect a dead engine to
-            "serving" — a crashed backend cannot serve. Leave it latched.
-          - Otherwise only a genuine destructive "failed" latches maintenance; "ok"/"busy"/
-            "rejected"/"unsupported" all leave the prior cache intact, so the engine keeps
-            serving."""
-        self.last_rebuild = {
-            "request_id": msg.request_id,
-            "status": msg.status,
-            "moe_cache_size": msg.moe_cache_size,
-            "num_pages": msg.num_pages,
-            "mamba_slots": msg.mamba_slots,
-            "num_swa_pages": msg.num_swa_pages,
-            "error": msg.error,
-        }
+        """Complete only the active operation, even when its HTTP waiter has gone away."""
+        with MAINTENANCE_LOCK:
+            if self._active_rebuild_id is None or msg.request_id != self._active_rebuild_id:
+                return
+            self._active_rebuild_id = None
+            self.last_rebuild = {
+                "request_id": msg.request_id,
+                "status": msg.status,
+                "moe_cache_size": msg.moe_cache_size,
+                "num_pages": msg.num_pages,
+                "mamba_slots": msg.mamba_slots,
+                "num_swa_pages": msg.num_swa_pages,
+                "error": msg.error,
+            }
+            if self.fatal_error is not None or msg.status not in {
+                "ok", "busy", "rejected", "unsupported"
+            }:
+                self.maintenance_state = "failed"
+            elif self.maintenance_state == "rebuilding":
+                self.maintenance_state = "serving"
+        # Futures remain loop-owned; the supervisor marshals its wakeup onto this loop.
         fut = self.rebuild_futures.pop(msg.request_id, None)
         if fut is not None and not fut.done():
             fut.set_result(self.last_rebuild)
-        if self.fatal_error is not None:
-            # A dead backend stays failed regardless of any (possibly stale/buffered) reply.
-            self.maintenance_state = "failed"
-            return
-        self.maintenance_state = "failed" if msg.status == "failed" else "serving"
 
     def fail_pending_rebuilds(self, message: str) -> None:
         """Resolve every in-flight rebuild waiter as failed. Called from the supervisor thread
@@ -521,38 +533,53 @@ async def dispatch_rebuild(
     ``{"status": "failed"|"timeout"}`` on dispatch error / timeout. Every caller reaches it
     through ``POST /v1/cache/rebuild`` (``ft ctl cache``, the desktop panel, the shell's
     ``/cache``), which does the pre-flight maintenance_state checks (409/503 short-circuits)."""
-    request_id = str(uuid.uuid4())
-    fut = asyncio.get_running_loop().create_future()
-    state.rebuild_futures[request_id] = fut
-    state.maintenance_state = "rebuilding"
-    try:
-        await state.send_one(
-            CacheRebuildMsg(
-                request_id=request_id,
-                moe_cache_size=moe_cache_size,
-                num_pages=num_pages,
-                num_mamba_slots=num_mamba_slots,
-                num_swa_pages=num_swa_pages,
-                mode=mode,
+    with MAINTENANCE_LOCK:
+        if (
+            state.maintenance_state != "serving"
+            or getattr(state, "fatal_error", None) is not None
+            or getattr(state, "_active_rebuild_id", None) is not None
+        ):
+            return {"status": "failed", "error": "rebuild admission is closed"}
+        request_id = str(uuid.uuid4())
+        fut = asyncio.get_running_loop().create_future()
+        state.rebuild_futures[request_id] = fut
+        state._active_rebuild_id = request_id
+        state.maintenance_state = "rebuilding"
+    async def send_and_wait() -> Dict[str, Any]:
+        try:
+            await state.send_one(
+                CacheRebuildMsg(
+                    request_id=request_id,
+                    moe_cache_size=moe_cache_size,
+                    num_pages=num_pages,
+                    num_mamba_slots=num_mamba_slots,
+                    num_swa_pages=num_swa_pages,
+                    mode=mode,
+                )
             )
-        )
-    except Exception as e:  # noqa: BLE001
-        # The enqueue failed, so the scheduler never received the request and the engine is
-        # untouched. Roll the gate back to serving (else a transient ZMQ error would latch
-        # maintenance forever with no reply ever arriving to clear it) and surface the error.
-        state.rebuild_futures.pop(request_id, None)
-        state.maintenance_state = "serving"
-        return {"status": "failed", "error": f"failed to dispatch rebuild: {e!r}"}
+        except Exception as e:  # noqa: BLE001
+            # A received result outranks an error from the older local send.
+            if fut.done() and not fut.cancelled():
+                return fut.result()
+            # No delivery proof: retain the active ID for a possible late reply.
+            return {
+                "status": "failed",
+                "request_id": request_id,
+                "delivery": "unknown",
+                "error": f"failed to dispatch rebuild; delivery is unknown: {e!r}",
+            }
+        return await fut
+
     try:
-        return await asyncio.wait_for(fut, timeout=timeout)
+        # Include the send in the cooperative wait budget; support Python 3.10.
+        return await asyncio.wait_for(send_and_wait(), timeout=timeout)
     except asyncio.TimeoutError:
-        # Do NOT reopen the maintenance gate here: the scheduler may still be mid-rebuild
-        # (e.g. a slow CUDA-graph recapture) and the backend request was not cancelled.
-        # Leave maintenance_state == "rebuilding" so new generation and new rebuilds stay
-        # blocked; the eventual CacheRebuildReply flips it to serving/failed via
-        # _resolve_rebuild. Drop the now-cancelled future so it does not linger.
-        state.rebuild_futures.pop(request_id, None)
         return {"status": "timeout", "request_id": request_id}
+    finally:
+        # Timeout/cancellation ends the HTTP wait, not the backend operation.
+        state.rebuild_futures.pop(request_id, None)
+        if not fut.done():
+            fut.cancel()
 
 
 def _resolve_num_swa_pages(state: FrontendManager, req: CacheRebuildRequest) -> int | None:
@@ -998,17 +1025,11 @@ def run_api_server(config: ServerArgs, start_backend: Callable[[], "Any"], run_s
     _GLOBAL_STATE.backend_processes = list(getattr(handle, "processes", None) or [])
 
     def _on_ready() -> None:
-        # A stop requested while weights were loading has already sealed admission.  The backend
-        # may finish its ready handshake before SIGTERM arrives; never reopen that gate after the
-        # daemon has received a final accounting snapshot.
-        if _GLOBAL_STATE.maintenance_state == "loading":
-            _GLOBAL_STATE.maintenance_state = "serving"
-            _GLOBAL_STATE.ready_at = time.monotonic()
+        if _mark_backend_ready(_GLOBAL_STATE):
             logger.info(f"API server is ready to serve on {host}:{port}")
 
     def _on_failure(message: str) -> None:
-        _GLOBAL_STATE.fatal_error = message
-        _GLOBAL_STATE.maintenance_state = "failed"
+        _mark_backend_failed(_GLOBAL_STATE, message)
         logger.error("Backend supervisor: %s", message)
         # No CacheRebuildReply will ever arrive from a dead backend, so wake any caller blocked
         # in dispatch_rebuild's await now — otherwise it strands until the full rebuild timeout.

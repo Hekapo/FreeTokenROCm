@@ -6,6 +6,7 @@ on top lives in tests/server/test_rebuild_maintenance.py."""
 
 from __future__ import annotations
 
+import pytest
 import torch
 
 
@@ -168,3 +169,195 @@ def test_rebuild_cache_refreshes_prefill_budget(monkeypatch):
     cache_manager.prefill_chunk_budget = 1000  # the (stubbed) engine rebuild shrank the pool
     Scheduler.rebuild_cache(sched, num_pages=16)
     assert sched.prefill_budget == 1000  # tracks the shrunk cap, not the stale 5000
+
+
+def _failure_policy_scheduler():
+    from types import SimpleNamespace
+    from unittest.mock import Mock
+
+    from freetoken.scheduler.scheduler import Scheduler
+
+    sched = Scheduler.__new__(Scheduler)
+    sched.engine = SimpleNamespace(
+        rebuild_teardown_started=True,
+        rebuild_runtime_cache=Mock(),
+    )
+    sched.device = object()
+    sched.config = SimpleNamespace(tp_info=SimpleNamespace(size=1))
+    sched.prefill_manager = SimpleNamespace(runnable=False)
+    sched.decode_manager = SimpleNamespace(runnable=False)
+    sched._pending_rebuild = SimpleNamespace(
+        request_id="failure-policy", moe_cache_size=16, num_pages=None,
+        num_mamba_slots=None, num_swa_pages=None,
+    )
+    # The old policy reads this snapshot; keeping it lets a regression reach its unsafe branch.
+    sched._current_cache_geometry = Mock(return_value={
+        "moe_cache_size": 8, "num_pages": 32,
+        "num_mamba_slots": None, "num_swa_pages": None,
+    })
+    sched.rebuild_cache = Mock()
+    sched._reply_rebuild = Mock()
+    sched._log_cache_geometry = Mock()
+    return sched
+
+
+def test_rebuild_policy_success_acknowledges_once():
+    sched = _failure_policy_scheduler()
+
+    sched._execute_pending_rebuild()
+
+    sched.rebuild_cache.assert_called_once_with(
+        moe_cache_size=16, num_pages=None, num_mamba_slots=None, num_swa_pages=None,
+    )
+    sched._reply_rebuild.assert_called_once_with("failure-policy", "ok")
+    sched._log_cache_geometry.assert_called_once_with("Cache rebuilt")
+    assert sched._pending_rebuild is None
+
+
+def test_rebuild_policy_recovers_only_explicit_preteardown_rejection():
+    from freetoken.engine.engine import CacheRebuildRejected
+
+    sched = _failure_policy_scheduler()
+    failure = CacheRebuildRejected("geometry exceeds budget")
+
+    def reject(**kwargs):
+        assert sched.engine.rebuild_teardown_started is False
+        raise failure
+
+    sched.rebuild_cache.side_effect = reject
+    sched._execute_pending_rebuild()
+
+    assert sched.rebuild_cache.call_count == 1
+    sched._reply_rebuild.assert_called_once_with(
+        "failure-policy", "rejected", error=str(failure),
+    )
+    sched._log_cache_geometry.assert_not_called()
+    assert sched._pending_rebuild is None
+
+
+@pytest.mark.parametrize("teardown_started", [False, True])
+@pytest.mark.parametrize("error_type", [RuntimeError, ValueError, torch.OutOfMemoryError])
+def test_rebuild_policy_unexpected_error_escapes_without_retry(error_type, teardown_started):
+    sched = _failure_policy_scheduler()
+    failure = error_type("injected rebuild failure")
+
+    def fail(**kwargs):
+        sched.engine.rebuild_teardown_started = teardown_started
+        raise failure
+
+    sched.rebuild_cache.side_effect = fail
+    with pytest.raises(error_type) as caught:
+        sched._execute_pending_rebuild()
+
+    assert caught.value is failure
+    assert sched.rebuild_cache.call_count == 1
+    assert sched._pending_rebuild is None
+    sched._reply_rebuild.assert_not_called()
+    sched._log_cache_geometry.assert_not_called()
+
+
+@pytest.mark.parametrize("phase", ["destructive", "missing", "none"])
+def test_rebuild_policy_late_or_unclassified_typed_rejection_is_fatal(phase):
+    from freetoken.engine.engine import CacheRebuildRejected
+
+    sched = _failure_policy_scheduler()
+    failure = CacheRebuildRejected("late rejection")
+
+    def fail(**kwargs):
+        if phase == "destructive":
+            sched.engine.rebuild_teardown_started = True
+        elif phase == "missing":
+            del sched.engine.rebuild_teardown_started
+        else:
+            sched.engine.rebuild_teardown_started = None
+        raise failure
+
+    sched.rebuild_cache.side_effect = fail
+    with pytest.raises(CacheRebuildRejected) as caught:
+        sched._execute_pending_rebuild()
+
+    assert caught.value is failure
+    assert sched.rebuild_cache.call_count == 1
+    sched._reply_rebuild.assert_not_called()
+    sched._log_cache_geometry.assert_not_called()
+
+
+def test_rebuild_policy_initial_sync_failure_is_not_validation_rejection(monkeypatch):
+    from types import MethodType
+    from unittest.mock import Mock
+
+    from freetoken.scheduler.scheduler import Scheduler
+
+    sched = _failure_policy_scheduler()
+    failure = RuntimeError("injected completion failure")
+    synchronize = Mock(side_effect=failure)
+    monkeypatch.setattr(torch.cuda, "synchronize", synchronize)
+    # Drive the real entry path: the barrier precedes engine teardown and can itself fail.
+    sched.rebuild_cache = MethodType(Scheduler.rebuild_cache, sched)
+
+    with pytest.raises(RuntimeError) as caught:
+        sched._execute_pending_rebuild()
+
+    assert caught.value is failure
+    synchronize.assert_called_once_with(sched.device)
+    sched.engine.rebuild_runtime_cache.assert_not_called()
+    sched._reply_rebuild.assert_not_called()
+    sched._log_cache_geometry.assert_not_called()
+
+
+@pytest.mark.parametrize("loop", ["normal", "overlap"])
+def test_rebuild_policy_fatal_failure_prevents_next_batch(loop):
+    from types import SimpleNamespace
+    from unittest.mock import Mock
+
+    sched = _failure_policy_scheduler()
+    failure = RuntimeError("injected device failure")
+    sched.rebuild_cache.side_effect = failure
+    sched.receive_msg = Mock(return_value=[])
+    sched._schedule_next_batch = Mock(return_value=None)
+    sched.stream = SimpleNamespace(wait_stream=Mock())
+    sched.engine.stream = object()
+    sched._process_last_data = Mock()
+    sched._flush_abort_acks = Mock()
+
+    with pytest.raises(RuntimeError) as caught:
+        if loop == "normal":
+            sched.normal_loop()
+        else:
+            sched.overlap_loop(None)
+
+    assert caught.value is failure
+    assert sched.rebuild_cache.call_count == 1
+    sched._schedule_next_batch.assert_not_called()
+    sched._process_last_data.assert_not_called()
+    sched._flush_abort_acks.assert_not_called()
+
+
+def test_rebuild_policy_ack_failure_cannot_retry_or_reject_completed_rebuild():
+    from freetoken.engine.engine import CacheRebuildRejected
+
+    sched = _failure_policy_scheduler()
+    failure = CacheRebuildRejected("injected acknowledgement failure")
+    sched._reply_rebuild.side_effect = failure
+
+    with pytest.raises(CacheRebuildRejected) as caught:
+        sched._execute_pending_rebuild()
+
+    assert caught.value is failure
+    assert sched.rebuild_cache.call_count == 1
+    sched._reply_rebuild.assert_called_once_with("failure-policy", "ok")
+
+
+@pytest.mark.parametrize("error_type", [KeyboardInterrupt, SystemExit])
+def test_rebuild_policy_process_interrupt_is_not_recovered(error_type):
+    sched = _failure_policy_scheduler()
+    failure = error_type("injected process interrupt")
+    sched.rebuild_cache.side_effect = failure
+
+    with pytest.raises(error_type) as caught:
+        sched._execute_pending_rebuild()
+
+    assert caught.value is failure
+    assert sched.rebuild_cache.call_count == 1
+    sched._reply_rebuild.assert_not_called()
+    sched._log_cache_geometry.assert_not_called()

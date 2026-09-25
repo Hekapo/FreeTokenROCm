@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass, field, replace
 from functools import cached_property
 from typing import TYPE_CHECKING, List
@@ -89,13 +90,17 @@ class EngineConfig:
     num_token_override: int | None = None
 
     def __post_init__(self):
-        if self.moe_backend is None:
-            return
-        if self.moe_strategy != "auto":
-            raise ValueError("moe_backend is the old name of moe_strategy; pass only moe_strategy")
-        logger.warning("EngineConfig.moe_backend is deprecated; use moe_strategy")
-        object.__setattr__(self, "moe_strategy", self.moe_backend)
-        object.__setattr__(self, "moe_backend", None)
+        if self.moe_backend is not None:
+            if self.moe_strategy != "auto":
+                raise ValueError("moe_backend is the old name of moe_strategy; pass only moe_strategy")
+            logger.warning("EngineConfig.moe_backend is deprecated; use moe_strategy")
+            object.__setattr__(self, "moe_strategy", self.moe_backend)
+            object.__setattr__(self, "moe_backend", None)
+        from .experiment import validate_baseline
+
+        manifest = validate_baseline(self)
+        if manifest is not None:
+            logger.info("FREETOKEN_BASELINE_CONFIG=%s", json.dumps(manifest, sort_keys=True))
 
     @cached_property
     def hf_config(self):

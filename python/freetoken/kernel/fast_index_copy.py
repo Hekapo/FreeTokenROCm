@@ -100,7 +100,11 @@ def fast_index_copy_jit(
     num_block: int | None = None,
     priority: str | None = None,
     sync_flag: torch.Tensor | None = None,
+    status: torch.Tensor | None = None,
 ) -> None:
+    """``status``: optional int32 [1] device word; the kernel ORs in bit 1 for a device count
+    outside ``[0, len(indices)]`` and bit 2 for an index outside the rows of ``dst``/``src``,
+    skipping that work instead of accessing memory out of bounds."""
     num_dst_feature = math.prod(dst.shape[1:])
     num_src_feature = math.prod(src.shape[1:])
     assert num_src_feature == num_dst_feature
@@ -128,15 +132,15 @@ def fast_index_copy_jit(
         num_block=num_block,
     )
     if priority is None:
-        module.launch(dst, dst_indices, src, src_indices, num_indices)
+        module.launch(dst, dst_indices, src, src_indices, num_indices, status)
         return
 
     assert priority in ("high", "normal")
     assert sync_flag is not None
     if priority == "high":
-        module.launch_high(dst, dst_indices, src, src_indices, num_indices, sync_flag)
+        module.launch_high(dst, dst_indices, src, src_indices, num_indices, sync_flag, status)
         return
-    module.launch_normal(dst, dst_indices, src, src_indices, num_indices, sync_flag)
+    module.launch_normal(dst, dst_indices, src, src_indices, num_indices, sync_flag, status)
 
 
 @lru_cache(maxsize=None)
@@ -158,6 +162,9 @@ def fast_index_copy_multi_jit(
     src_indices: torch.Tensor,
     num_indices: torch.Tensor | None = None,
     *,
+    dst_rows: int,
+    src_rows: int,
+    status: torch.Tensor | None = None,
     num_threads: int = 1024,
     blocks_per_bank: int = 8,
 ) -> None:
@@ -176,13 +183,18 @@ def fast_index_copy_multi_jit(
     once by the caller (the per-bank slot-cache base addr, host-source base addr, and
     per-row byte size). Every bank's per-row byte size must be a multiple of 16, and the
     base addresses 16-byte aligned (true for contiguous torch allocations of these banks).
+    ``dst_rows``/``src_rows`` bound every bank's indices; out-of-range work is skipped and
+    reported through ``status`` exactly as in :func:`fast_index_copy_jit`.
     """
     if _skip_fast_index_copy_enabled():
         return
     module = _jit_fast_index_copy_multi_module(
         num_threads=num_threads, blocks_per_bank=blocks_per_bank
     )
-    module.launch(dst_ptrs, src_ptrs, feat_bytes, dst_indices, src_indices, num_indices)
+    module.launch(
+        dst_ptrs, src_ptrs, feat_bytes, dst_indices, src_indices, num_indices,
+        dst_rows, src_rows, status,
+    )
 
 
 def update_copy_flag_jit(sync_flag: torch.Tensor, delta: int) -> None:
