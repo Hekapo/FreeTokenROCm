@@ -201,3 +201,110 @@ def test_stacked_expert_pieces_pair_each_layer_in_arrival_order():
     assert torch.equal(pieces[1][3]["gate_up"], torch.full((2, 3, 4), 2.0))
     with pytest.raises(ValueError, match="Missing MoE expert source layers"):
         list(stacked_expert_pieces(tensors[:3], config))
+
+
+@pytest.mark.parametrize(
+    "missing",
+    [
+        ("posix_fadvise",),
+        ("POSIX_FADV_DONTNEED",),
+        ("posix_fadvise", "POSIX_FADV_DONTNEED"),
+    ],
+)
+def test_drop_page_cache_skips_missing_optional_api(monkeypatch, missing):
+    from unittest.mock import Mock
+    from freetoken.models import loader
+
+    fake_os = SimpleNamespace(
+        O_RDONLY=0, POSIX_FADV_DONTNEED=4,
+        open=Mock(side_effect=AssertionError("unsupported hint must not open a file")),
+        close=Mock(), posix_fadvise=Mock(),
+    )
+    advice = fake_os.posix_fadvise
+    for name in missing:
+        delattr(fake_os, name)
+    monkeypatch.setattr(loader, "os", fake_os)
+
+    loader.drop_page_cache("weights.safetensors")
+
+    fake_os.open.assert_not_called()
+    advice.assert_not_called()
+    fake_os.close.assert_not_called()
+
+
+@pytest.mark.parametrize("fd", [0, 37])
+@pytest.mark.parametrize("advice_error", [False, True])
+def test_drop_page_cache_closes_fd_after_optional_hint(monkeypatch, fd, advice_error):
+    from unittest.mock import Mock
+    from freetoken.models import loader
+
+    fake_os = SimpleNamespace(
+        O_RDONLY=0, POSIX_FADV_DONTNEED=4,
+        open=Mock(return_value=fd), close=Mock(),
+        posix_fadvise=Mock(side_effect=OSError("hint unsupported") if advice_error else None),
+    )
+    monkeypatch.setattr(loader, "os", fake_os)
+
+    loader.drop_page_cache("weights.safetensors")
+
+    fake_os.open.assert_called_once_with("weights.safetensors", fake_os.O_RDONLY)
+    fake_os.posix_fadvise.assert_called_once_with(fd, 0, 0, fake_os.POSIX_FADV_DONTNEED)
+    fake_os.close.assert_called_once_with(fd)
+
+
+def test_drop_page_cache_ignores_open_oserror_without_closing_unknown_fd(monkeypatch):
+    from unittest.mock import Mock
+    from freetoken.models import loader
+
+    fake_os = SimpleNamespace(
+        O_RDONLY=0, POSIX_FADV_DONTNEED=4,
+        open=Mock(side_effect=OSError("unavailable")), close=Mock(), posix_fadvise=Mock(),
+    )
+    monkeypatch.setattr(loader, "os", fake_os)
+
+    loader.drop_page_cache("weights.safetensors")
+
+    fake_os.posix_fadvise.assert_not_called()
+    fake_os.close.assert_not_called()
+
+
+def test_drop_page_cache_ignores_close_oserror_without_retry(monkeypatch):
+    from unittest.mock import Mock
+    from freetoken.models import loader
+
+    fake_os = SimpleNamespace(
+        O_RDONLY=0, POSIX_FADV_DONTNEED=4,
+        open=Mock(return_value=37),
+        close=Mock(side_effect=OSError("close failed")), posix_fadvise=Mock(),
+    )
+    monkeypatch.setattr(loader, "os", fake_os)
+
+    loader.drop_page_cache("weights.safetensors")
+
+    fake_os.posix_fadvise.assert_called_once_with(37, 0, 0, fake_os.POSIX_FADV_DONTNEED)
+    fake_os.close.assert_called_once_with(37)
+
+
+@pytest.mark.parametrize("stage", ["open", "advice"])
+def test_drop_page_cache_propagates_non_oserror(monkeypatch, stage):
+    from unittest.mock import Mock
+    from freetoken.models import loader
+
+    error = ValueError("not an optional OS failure")
+    fake_os = SimpleNamespace(
+        O_RDONLY=0, POSIX_FADV_DONTNEED=4,
+        open=Mock(return_value=37, side_effect=error if stage == "open" else None),
+        close=Mock(),
+        posix_fadvise=Mock(side_effect=error if stage == "advice" else None),
+    )
+    monkeypatch.setattr(loader, "os", fake_os)
+
+    with pytest.raises(ValueError, match="not an optional OS failure"):
+        loader.drop_page_cache("weights.safetensors")
+
+    if stage == "open":
+        fake_os.posix_fadvise.assert_not_called()
+        fake_os.close.assert_not_called()
+    else:
+        fake_os.posix_fadvise.assert_called_once_with(37, 0, 0, fake_os.POSIX_FADV_DONTNEED)
+        fake_os.close.assert_called_once_with(37)
