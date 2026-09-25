@@ -175,12 +175,35 @@ def run_backend_supervisor(
     on_ready()
 
     while True:
-        dead = _first_dead(handle.processes)
-        if dead is not None:
+        # A dying worker pushes ("error", reason) first (launch._run_scheduler). Watch for it as
+        # well as for the exit: on Windows/ROCm a worker whose exception escaped a kernel launch
+        # can stay stuck in the driver long after its interpreter exits, so is_alive() alone
+        # would keep reporting a dead engine as healthy.
+        reason = _next_error(handle, poll)
+        dead = _first_dead(handle.processes) if reason is None else None
+        if reason is None and dead is not None:
+            reason = f"backend worker {getattr(dead, 'name', '?')} exited"
+        if reason is not None:
             if _shutting_down():
                 # Orderly stop in progress: the worker exit is expected — stay quiet.
                 return
             if on_failure is not None:
-                on_failure(f"backend worker {getattr(dead, 'name', '?')} exited")
+                on_failure(reason)
             return
+
+
+def _next_error(handle: BackendHandle, poll: float) -> str | None:
+    """Wait up to ``poll`` for a post-ready ("error", reason) ack; anything else is ignored. A
+    queue that cannot be read (no ack_queue, or a broken pipe after a crash) degrades to the
+    plain liveness poll."""
+    queue = getattr(handle, "ack_queue", None)
+    if queue is None:
         time.sleep(poll)
+        return None
+    try:
+        return _as_error(queue.get(timeout=poll))
+    except Empty:
+        return None
+    except (EOFError, OSError, ValueError):
+        time.sleep(poll)
+        return None

@@ -39,6 +39,7 @@ from .args import ServerArgs
 from .anthropic_api import register_anthropic_routes
 from .accounting import MAINTENANCE_LOCK, AdmissionClosedError, register_accounting_routes
 from .control_api import register_control_routes
+from .generation import ENGINE_UNAVAILABLE
 from .openai_api import register_openai_routes
 from . import request_ring
 from .access_log_filter import install_polling_access_log_filter
@@ -108,11 +109,16 @@ def _terminate_backend_workers(processes: List[Any]) -> None:
             continue
 
 
-def _exit_after_backend_death(grace_s: float) -> threading.Timer:
+def _exit_after_backend_death(grace_s: float, processes: List[Any] | None = None) -> threading.Timer:
     def _stop() -> None:
         if _SHUTTING_DOWN.is_set():
             return  # an external stop got here first
         logger.error("Backend worker is gone and cannot be restarted; stopping the API server")
+        # Tear the surviving workers down first. On Windows os.kill(SIGTERM) is TerminateProcess:
+        # no lifespan shutdown runs, so the non-daemon tokenizer/detokenizer would be orphaned,
+        # still holding the ZMQ ports (the next serve then fails with "Address in use").
+        _terminate_backend_workers(processes)
+        _reap_backend_workers(processes)
         os.kill(os.getpid(), signal.SIGTERM)
 
     timer = threading.Timer(grace_s, _stop)
@@ -332,6 +338,36 @@ class FrontendManager:
         except RuntimeError:
             # Loop already closed (shutdown racing the crash): nothing left to wake.
             pass
+
+    def fail_inflight_requests(self, message: str) -> None:
+        """Finish every admitted request with an engine error. Called from the supervisor thread
+        when a worker death latches a fatal error: the dead engine will never send their terminal
+        reply, so each HTTP waiter in wait_for_ack would otherwise hang until the process exits
+        and its connection drops without a status. Marshalled onto the loop like
+        fail_pending_rebuilds (ack_map/event_map are loop-owned)."""
+        loop = self._loop
+        if loop is None:
+            return  # listener never started -> no request could be waiting
+
+        def _fail_all() -> None:
+            for uid in list(self.ack_map):
+                reply = UserReply(
+                    uid=uid,
+                    incremental_output="",
+                    finished=True,
+                    error=f"engine unavailable: {message}",
+                    error_code=ENGINE_UNAVAILABLE,
+                )
+                self.stats.observe(reply)
+                self.ack_map[uid].append(reply)
+                event = self.event_map.get(uid)
+                if event is not None:
+                    event.set()
+
+        try:
+            loop.call_soon_threadsafe(_fail_all)
+        except RuntimeError:
+            pass  # loop already closed: nothing left to wake
 
     def _create_listener_once(self):
         if not self.initialized:
@@ -1034,10 +1070,13 @@ def run_api_server(config: ServerArgs, start_backend: Callable[[], "Any"], run_s
         # No CacheRebuildReply will ever arrive from a dead backend, so wake any caller blocked
         # in dispatch_rebuild's await now — otherwise it strands until the full rebuild timeout.
         _GLOBAL_STATE.fail_pending_rebuilds(message)
+        # Likewise answer every in-flight generation now (503) instead of letting it hang until
+        # the process exits and drops the connection without a status.
+        _GLOBAL_STATE.fail_inflight_requests(message)
         # Then take the whole serve down (see _exit_after_backend_death). Shell mode is excluded:
         # a person is sitting at that TUI, the API is theirs alone, and its stop path is ^C.
         if not run_shell:
-            _exit_after_backend_death(BACKEND_DEATH_EXIT_GRACE_S)
+            _exit_after_backend_death(BACKEND_DEATH_EXIT_GRACE_S, _GLOBAL_STATE.backend_processes)
 
     def _on_meta(meta: dict) -> None:
         # Per-unit cache VRAM costs + the free-VRAM seed + per-pool floors + the actual pool

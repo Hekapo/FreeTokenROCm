@@ -34,6 +34,7 @@ from .generation import (
     ToolCallStart,
     generate_events,
     generate_full,
+    is_engine_failure,
     prerender_error,
     render_messages,
     resolve_sampling,
@@ -207,7 +208,7 @@ async def handle_chat_completion(
     try:
         result = await generate_full(uid, spec, state, source="/v1/chat/completions")
     except GenerationError as exc:
-        return create_error_response(str(exc), code=exc.code)
+        return _generation_error_response(str(exc), exc.code)
     message: dict[str, Any] = {"role": "assistant", "content": result.content}
     if result.reasoning:
         message["reasoning_content"] = result.reasoning
@@ -266,7 +267,7 @@ async def stream_chat_completion_chunks(
             # Request failed before producing output — emit an error chunk + [DONE] so the
             # client gets a terminal signal instead of a stalled stream.
             yield _sse(
-                {"error": {"message": str(exc), "type": "invalid_request_error", "code": exc.code}}
+                {"error": {"message": str(exc), "type": _generation_error_type(exc.code), "code": exc.code}}
             )
             break
         if isinstance(ev, ReasoningDelta):
@@ -434,7 +435,7 @@ async def handle_completion(
         finish_reason = "stop"
         async for ack in state.wait_for_ack(uid):
             if getattr(ack, "error", None):
-                return create_error_response(ack.error)
+                return _generation_error_response(ack.error, getattr(ack, "error_code", None))
             prompt_tokens += ack.prompt_tokens_delta
             completion_tokens += ack.completion_tokens_delta
             cached_tokens += ack.cached_tokens
@@ -461,7 +462,8 @@ async def stream_completion_chunks(uid: int, req: CompletionRequest, state: Any)
     finish_reason = "stop"
     async for ack in state.wait_for_ack(uid):
         if getattr(ack, "error", None):
-            yield _sse({"error": {"message": ack.error, "type": "invalid_request_error", "code": None}})
+            code = getattr(ack, "error_code", None)
+            yield _sse({"error": {"message": ack.error, "type": _generation_error_type(code), "code": code}})
             yield b"data: [DONE]\n\n"
             return
         prompt_tokens += ack.prompt_tokens_delta
@@ -511,6 +513,21 @@ async def stream_completion_chunks(uid: int, req: CompletionRequest, state: Any)
             }
         )
     yield b"data: [DONE]\n\n"
+
+
+def _generation_error_type(code: str | None) -> str:
+    return "server_error" if is_engine_failure(code) else "invalid_request_error"
+
+
+def _generation_error_response(message: str, code: str | None) -> JSONResponse:
+    """A request that failed before producing output: 503 when the engine died under it (retry
+    elsewhere / later), else 400 (the input cannot be served)."""
+    return create_error_response(
+        message,
+        status_code=503 if is_engine_failure(code) else 400,
+        err_type=_generation_error_type(code),
+        code=code,
+    )
 
 
 def create_error_response(

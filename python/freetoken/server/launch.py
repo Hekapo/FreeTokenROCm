@@ -39,8 +39,9 @@ def _configure_windows_asyncio_policy(platform_name: str | None = None) -> bool:
 def _report_startup_error(ack_queue: mp.Queue, exc: BaseException) -> None:
     """Tell the parent WHY this worker is dying — push an ("error", reason) ack before it exits,
     so the supervisor reports the real cause (e.g. a config ValueError) instead of the generic
-    "backend worker … exited during load". Best-effort and flushed (close + join_thread), since
-    the process is about to terminate; a failure to report must never mask the original error."""
+    "backend worker … exited during load". Used for serving-time deaths too (the supervisor keeps
+    reading the queue after ready). Best-effort and flushed (close + join_thread), since the
+    process is about to terminate; a failure to report must never mask the original error."""
     try:
         ack_queue.put(("error", f"{type(exc).__name__}: {exc}"))
         ack_queue.close()
@@ -158,8 +159,12 @@ def _run_scheduler(args: ServerArgs, ack_queue: mp.Queue[str]) -> None:
                 print()  # for a clean newline after ^C
                 logger.info("Scheduler exiting gracefully...")
             scheduler.shutdown()
-        except BaseException:
-            # A serving/rebuild failure leaves the worker as before; only let the GPU go idle first.
+        except BaseException as exc:
+            # Report the death before dying: on Windows/ROCm a worker killed by an exception that
+            # escaped a kernel launch can stay stuck in the driver for minutes after its
+            # interpreter exits, so the supervisor's is_alive() watch never sees it and /health
+            # stays "ok" while every request hangs. The supervisor also watches for this ack.
+            _report_startup_error(ack_queue, exc)
             _drain_device_before_exit()
             raise
 

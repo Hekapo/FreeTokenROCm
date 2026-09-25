@@ -63,6 +63,7 @@ from .generation import (
     ContentDelta,
     GenDone,
     GenerationError,
+    is_engine_failure,
     GenResult,
     GenSpec,
     ReasoningDelta,
@@ -173,7 +174,7 @@ async def handle_responses(
     try:
         result = await generate_full(uid, spec, state, source="/v1/responses")
     except GenerationError as exc:
-        return _error_response(400, str(exc), exc.code)
+        return _error_response(503 if is_engine_failure(exc.code) else 400, str(exc), exc.code)
     response = build_responses_response(result, req, response_id, created, cache_report=cache_report)
     return JSONResponse(content=response.model_dump(mode="json"))
 
@@ -750,5 +751,11 @@ def _sse(event) -> str:
 def _error_response(status_code: int, message: str, code: str | None = None) -> JSONResponse:
     return JSONResponse(
         status_code=status_code,
-        content={"error": {"message": message, "type": "invalid_request_error", "code": code}},
+        content={
+            "error": {
+                "message": message,
+                "type": "server_error" if is_engine_failure(code) else "invalid_request_error",
+                "code": code,
+            }
+        },
     )
