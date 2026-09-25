@@ -146,8 +146,9 @@ public:
   auto set_value(int64_t value) -> void {
     RuntimeCheck(!this->has_value(), "Size value already set");
     m_value = value;
+    m_has_value = true;
   }
-  auto has_value() const -> bool { return m_value != 0; }
+  auto has_value() const -> bool { return m_has_value; }
   auto get_value() const -> std::optional<int64_t> {
     return this->has_value() ? std::optional{m_value} : std::nullopt;
   }
@@ -193,6 +194,8 @@ private:
 
   std::int64_t m_value;
   std::string_view m_annotation;
+  // Zero is a bound size or stride, not the absence of a value.
+  bool m_has_value = false;
 };
 
 inline auto operator==(DLDevice lhs, DLDevice rhs) -> bool {
