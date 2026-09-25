@@ -882,9 +882,8 @@ class Engine:
         # batch sizes after the first rebuild. Reusing the already-resolved list keeps the
         # captured coverage identical (the fit-check above guarantees the graph headroom fits).
         prior_graph_bs = self.graph_runner.graph_bs_list
-        # Point of no return for the scheduler's rollback logic: from here the live graphs and
-        # pools start being freed. A failure BEFORE this flag flips leaves the engine serving
-        # untouched (no rollback needed); after it, only a rebuild restores service.
+        # A validation rejection is recoverable only before this destructive boundary.
+        # The flag records mutation, not device health or permission to retry other failures.
         self.rebuild_teardown_started = True
         # 1. Tear down CUDA graphs + backend capture scratch (free-before-alloc).
         self.attn_backend.reset_capture()
