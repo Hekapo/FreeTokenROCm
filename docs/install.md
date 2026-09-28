@@ -20,7 +20,7 @@ CUDA kernels are JIT-compiled on first use, need a CUDA 13 toolkit with `nvcc` o
 ### AMD ROCm source install (experimental)
 
 Use an official ROCm PyTorch image whose PyTorch version satisfies the project's
-`torch>=2.11,<2.12` constraint. For RDNA4, the matching ROCm 7.14 image is:
+`torch>=2.11,<2.14` constraint. For RDNA4, the matching ROCm 7.14 image is:
 
 ```bash
 VIDEO_GID="$(getent group video | cut -d: -f3)"
@@ -43,6 +43,9 @@ python -m pip install --no-build-isolation -e .
 
 Set both architecture variables to `gfx1200` for RX 9060 family GPUs, or to the
 actual target reported by `rocminfo`.
+
+For an experimental Windows RX 9070 XT (`gfx1201`) source build with ROCm 10,
+see [Windows ROCm 10 notes](install-windows-rocm10.md).
 
 ## Method 2: Install from source
 
