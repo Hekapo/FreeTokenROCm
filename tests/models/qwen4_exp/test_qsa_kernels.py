@@ -280,8 +280,14 @@ def test_block_topk_matches_torch_topk(n_blocks: int, width: int, bs: int, mode:
     qsa_block_topk(logits, visible, blocks)
     expected = _torch_topk_blocks(logits, visible, width)
 
-    # Selection is a set: torch.topk orders by descending score, the kernel by column id.
-    torch.testing.assert_close(blocks.sort(-1).values, expected.sort(-1).values)
+    # At a tied cutoff, torch.topk and the kernel can choose different columns
+    # with the same score. The sparse attention path only needs the score set.
+    if mode == "ties":
+        got_scores = logits.gather(1, blocks.long()).sort(-1).values
+        expected_scores = logits.gather(1, expected.long()).sort(-1).values
+        torch.testing.assert_close(got_scores, expected_scores)
+    else:
+        torch.testing.assert_close(blocks.sort(-1).values, expected.sort(-1).values)
     live = (blocks >= 0).sum(-1)
     torch.testing.assert_close(live, (expected >= 0).sum(-1))
     # expand.py reads ranks [0, complete_blocks), so a -1 may only sit in the tail.

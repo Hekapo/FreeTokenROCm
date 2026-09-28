@@ -263,6 +263,46 @@ class GGUFMergedLinear(BaseOP):
             )
 
         self.bias = torch.empty(self.out_features) if has_bias else None
+        self._packed_runs: tuple[tuple[torch.Tensor, int], ...] | None = None
+        self._dense_weights: dict[tuple[int, torch.dtype, torch.device], torch.Tensor] = {}
+
+    def load_state_dict(
+        self,
+        state_dict: dict[str, torch.Tensor],
+        *,
+        prefix: str = "",
+        _internal: bool = False,
+    ) -> None:
+        super().load_state_dict(state_dict, prefix=prefix, _internal=_internal)
+        runs: list[tuple[torch.Tensor, int]] = []
+        names: list[str] = []
+        run_type: int | None = None
+
+        def append_run() -> None:
+            if not names:
+                return
+            assert run_type is not None
+            weights = [getattr(self, name) for name in names]
+            if len(weights) == 1:
+                runs.append((weights[0], run_type))
+                return
+            merged = torch.cat(weights, dim=0)
+            offset = 0
+            for name, weight in zip(names, weights):
+                rows = weight.shape[0]
+                setattr(self, name, merged[offset : offset + rows])
+                offset += rows
+            runs.append((merged, run_type))
+
+        for name, qt in zip(self.part_names, self._quant_types):
+            if names and (qt != run_type or qt in GGML_UNQUANTIZED):
+                append_run()
+                names = []
+            names.append(name)
+            run_type = qt
+        append_run()
+        self._packed_runs = tuple(runs)
+        self._dense_weights.clear()
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Forward pass: compute each part's output and concatenate along dim=-1.
@@ -273,10 +313,28 @@ class GGUFMergedLinear(BaseOP):
         Returns:
             Tensor of shape [..., out_features] with parts concatenated along dim=-1.
         """
+        runs = self._packed_runs
+        if runs is None:
+            runs = tuple(
+                (getattr(self, name), qt)
+                for name, qt in zip(self.part_names, self._quant_types)
+            )
         parts = []
-        for name, qt in zip(self.part_names, self._quant_types):
-            qweight = getattr(self, name)
-            part_out = fused_mul_mat_gguf(x, qweight, qt)
+        for index, (qweight, qt) in enumerate(runs):
+            if (
+                self._packed_runs is not None
+                and qt in GGML_UNQUANTIZED
+                and qweight.dtype == torch.uint8
+            ):
+                key = (index, x.dtype, x.device)
+                weight = self._dense_weights.get(key)
+                if weight is None:
+                    weight = dequantize(qweight, qt, x.dtype)
+                    if not x.is_cuda or not torch.cuda.is_current_stream_capturing():
+                        self._dense_weights[key] = weight
+                part_out = x @ weight.T
+            else:
+                part_out = fused_mul_mat_gguf(x, qweight, qt)
             parts.append(part_out)
 
         out = torch.cat(parts, dim=-1)

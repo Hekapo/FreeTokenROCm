@@ -144,6 +144,60 @@ class TestMergedLinearConcatenatesOutputs:
         assert calls[2]["out_features"] == 512
 
 
+def test_merged_linear_combines_adjacent_packed_slots_after_load(monkeypatch):
+    layer = GGUFMergedLinear(32, [3, 2, 1, 1], [GGML_Q4_1, GGML_Q4_1, GGML_F32, GGML_F32])
+    for index, name in enumerate(layer.part_names):
+        getattr(layer, name).fill_(index + 1)
+    weights = {name: value.clone() for name, value in layer.state_dict().items()}
+    calls = []
+
+    def fake_matmul(x, qweight, quant_type):
+        calls.append((qweight.shape[0], quant_type))
+        if quant_type == GGML_F32:
+            return x @ qweight.view(torch.float32).T
+        return qweight[:, 0].to(x.dtype).unsqueeze(0).expand(x.shape[0], -1)
+
+    monkeypatch.setattr("freetoken.layers.gguf.fused_mul_mat_gguf", fake_matmul)
+    x = torch.ones(1, 32)
+    before = layer.forward(x)
+    assert calls == [(3, GGML_Q4_1), (2, GGML_Q4_1), (1, GGML_F32), (1, GGML_F32)]
+
+    layer.load_state_dict(weights.copy())
+    calls.clear()
+    after = layer.forward(x)
+    assert torch.equal(before, after)
+    assert calls == [(5, GGML_Q4_1)]
+    assert layer.qweight_0.untyped_storage().data_ptr() == layer.qweight_1.untyped_storage().data_ptr()
+    for name, weight in weights.items():
+        assert torch.equal(layer.state_dict()[name], weight)
+
+
+def test_merged_linear_converts_dense_weight_once_after_load(monkeypatch, mock_kernel_module):
+    import freetoken.layers.gguf as gguf_layer
+
+    layer = GGUFMergedLinear(32, [3, 2], [GGML_Q4_1, GGML_F32])
+    layer.qweight_0.zero_()
+    dense_weight = torch.arange(64, dtype=torch.float32).reshape(2, 32) / 64
+    layer.qweight_1.copy_(dense_weight.view(torch.uint8))
+    layer.load_state_dict({name: value.clone() for name, value in layer.state_dict().items()})
+
+    original_dequantize = gguf_layer.dequantize
+    calls = []
+
+    def counted_dequantize(raw, quant_type, dtype):
+        calls.append((quant_type, dtype))
+        return original_dequantize(raw, quant_type, dtype)
+
+    monkeypatch.setattr(gguf_layer, "dequantize", counted_dequantize)
+    x = torch.ones(1, 32, dtype=torch.bfloat16)
+    first = layer.forward(x)
+    second = layer.forward(x)
+    expected = x @ dense_weight.to(x.dtype).T
+    torch.testing.assert_close(first[:, 3:], expected, rtol=0, atol=0)
+    torch.testing.assert_close(second[:, 3:], expected, rtol=0, atol=0)
+    assert calls == [(GGML_F32, torch.bfloat16)]
+
+
 class TestMergedLinearRejectsLengthMismatch:
     """Test GGUFMergedLinear validation of output_sizes and quant_types lengths."""
 

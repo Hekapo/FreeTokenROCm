@@ -387,13 +387,17 @@ def test_aot_entry_carries_the_checkpoint_geometry():
         assert nbytes % 16 == 0, name  # fused multi-bank copy only engages on 16B multiples
 
 
-def test_every_registry_architecture_is_claimed_by_an_aot_entry():
+def test_every_static_registry_architecture_is_claimed_by_an_aot_entry():
+    from freetoken.models.gguf.config import GGUF_ARCH_TO_REGISTRY
     from freetoken.models.register import _MODEL_REGISTRY
 
     claimed = {m.architecture for m in SUPPORTED_MODELS}
     claimed |= {a for m in SUPPORTED_MODELS for a in m.arch_aliases}
     assert "Qwen4ExpForConditionalGeneration" in claimed
-    assert set(_MODEL_REGISTRY) - claimed == set()
+    # GGUF bank row sizes depend on the checkpoint's quant types, so one static
+    # AOT entry cannot claim every checkpoint served by a GGUF registry key.
+    dynamic_gguf = set(GGUF_ARCH_TO_REGISTRY.values())
+    assert set(_MODEL_REGISTRY) - claimed - dynamic_gguf == set()
 
 
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="needs cuda")

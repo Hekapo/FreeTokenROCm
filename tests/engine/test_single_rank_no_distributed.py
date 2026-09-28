@@ -95,6 +95,7 @@ def test_single_rank_keeps_gloo_when_torch_distributed_is_available(monkeypatch)
 def test_multi_rank_pynccl_route_is_unchanged(monkeypatch):
     calls = []
     world_group = object()
+    monkeypatch.setattr(engine_module.kernel_backend, "is_rocm", lambda: False)
     monkeypatch.setattr(engine_module, "torch_distributed_process_group_available", lambda: False)
     monkeypatch.setattr(
         engine_module.torch.distributed,

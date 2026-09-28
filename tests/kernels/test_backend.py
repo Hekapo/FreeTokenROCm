@@ -18,7 +18,7 @@ def test_rocm_never_selects_cuda_only_backends(monkeypatch):
     def unexpected_probe(_name: str) -> bool:
         raise AssertionError("unexpected CUDA-only package probe on ROCm")
 
-    monkeypatch.setattr(backend, "is_rocm", lambda: True)
+    monkeypatch.setattr(backend, "is_rocm_runtime", lambda: True)
     monkeypatch.setattr(backend, "_importable", unexpected_probe)
     _clear_probe_caches()
 
@@ -29,7 +29,7 @@ def test_rocm_never_selects_cuda_only_backends(monkeypatch):
 
 
 def test_cuda_keeps_optional_package_probes(monkeypatch):
-    monkeypatch.setattr(backend, "is_rocm", lambda: False)
+    monkeypatch.setattr(backend, "is_rocm_runtime", lambda: False)
     monkeypatch.setattr(backend, "_importable", lambda _name: True)
     _clear_probe_caches()
 
