@@ -167,7 +167,7 @@ class RadixPrefixCache(BasePrefixCache):
         node, prefix_len = self._tree_walk(input_ids)
         if prefix_len != insert_len:  # NOTE: prefix_len < insert_len
             new_node = RadixTreeNode(self.key_fn)
-            new_node.set_key_value(input_ids[prefix_len:], indices[prefix_len:].clone())
+            new_node.set_key_value(input_ids[prefix_len:].clone(), indices[prefix_len:].clone())
             new_node.set_parent(node)
             self.evictable_size += new_node.length
             node = new_node
