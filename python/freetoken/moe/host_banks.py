@@ -506,6 +506,19 @@ def read_range_into(buf: memoryview | mmap.mmap, path: str, *, file_offset: int,
     mv = (buf if isinstance(buf, memoryview) else memoryview(buf)).cast("B")
     if dest_offset + nbytes > len(mv):
         raise ValueError(f"destination holds {len(mv)} bytes, need {dest_offset + nbytes}")
+    if not (hasattr(os, "O_DIRECT") and hasattr(os, "preadv")):
+        # Windows has neither POSIX positional reads nor O_DIRECT. Keep the same
+        # byte-range contract for PLE tables with a buffered sequential read.
+        with open(path, "rb", buffering=0) as source:
+            source.seek(file_offset)
+            done = 0
+            while done < nbytes:
+                end = min(done + chunk, nbytes)
+                got = source.readinto(mv[dest_offset + done:dest_offset + end])
+                if not got:
+                    raise OSError(f"short read: {done} of {nbytes} bytes at {file_offset}")
+                done += got
+        return nbytes
     base = ctypes.addressof(ctypes.c_char.from_buffer(mv))
     if drop_cache:
         try:

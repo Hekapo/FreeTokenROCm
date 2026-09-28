@@ -615,6 +615,40 @@ def test_select_extend_tile_is_shared_memory_aware(head_dim, smem_optin, expecte
 
 
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="Triton attention needs CUDA")
+def test_triton_metadata_staging_keeps_two_batches_independent(monkeypatch):
+    from freetoken.attention.triton import TritonAttentionBackend
+
+    device = torch.device("cuda")
+    ctx = SimpleNamespace(
+        kv_cache=SimpleNamespace(device=device),
+        page_table=torch.arange(16, dtype=torch.int32, device=device).view(2, 8),
+    )
+    monkeypatch.setattr("freetoken.attention.triton.get_global_ctx", lambda: ctx)
+    backend = TritonAttentionBackend(SimpleNamespace())
+
+    def prepare(lengths):
+        batch = SimpleNamespace(
+            padded_reqs=[
+                SimpleNamespace(
+                    extend_len=1, device_len=length, cached_len=length - 1, table_idx=i
+                )
+                for i, length in enumerate(lengths)
+            ],
+            positions=torch.tensor([length - 1 for length in lengths], device=device),
+        )
+        backend.prepare_metadata(batch)
+        return batch.attn_metadata
+
+    first = prepare([2, 3])
+    second = prepare([4, 5])
+    torch.testing.assert_close(first.prefix_lens.cpu(), torch.tensor([1, 2], dtype=torch.int32))
+    torch.testing.assert_close(first.indptr.cpu(), torch.tensor([0, 2, 5], dtype=torch.int32))
+    torch.testing.assert_close(second.prefix_lens.cpu(), torch.tensor([3, 4], dtype=torch.int32))
+    torch.testing.assert_close(second.indptr.cpu(), torch.tensor([0, 4, 9], dtype=torch.int32))
+    assert first.prefix_lens.data_ptr() != second.prefix_lens.data_ptr()
+
+
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="Triton attention needs CUDA")
 def test_triton_backend_stores_kv_and_matches_reference(monkeypatch):
     from freetoken.attention import AttentionSpec
     from freetoken.attention.triton import TritonAttentionBackend

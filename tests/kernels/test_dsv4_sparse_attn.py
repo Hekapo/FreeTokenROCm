@@ -95,6 +95,29 @@ def _check(pools, q, idx, counts):
     return got
 
 
+@pytest.mark.parametrize("m", MS)
+def test_model_width_matches_reference(m):
+    """Exercise the model's 512-wide latent tile, not only the small test tile."""
+    d, h, n_window, n_cmp = 512, 128, 32, 256
+    g = torch.Generator(device="cuda").manual_seed(41)
+    q = torch.randn(1, m, h, d, device="cuda", dtype=torch.bfloat16, generator=g)
+    win = torch.randn(256, d, device="cuda", dtype=torch.bfloat16, generator=g)
+    cmp = torch.randn(512, d, device="cuda", dtype=torch.bfloat16, generator=g)
+    sink = torch.randn(h, device="cuda", dtype=torch.float32, generator=g)
+    idx = torch.empty(1, m, n_window + n_cmp, device="cuda", dtype=torch.int32)
+    idx[..., :n_window] = torch.randint(
+        0, win.shape[0], (1, m, n_window), device="cuda", generator=g, dtype=torch.int32
+    )
+    idx[..., n_window:] = torch.randint(
+        0, cmp.shape[0], (1, m, n_cmp), device="cuda", generator=g, dtype=torch.int32
+    )
+    counts = torch.full((1, m), n_cmp, device="cuda", dtype=torch.int32)
+    scale = d ** -0.5
+    got = sparse_attn_paged(q, win, cmp, sink, idx, n_window, scale, cmp_counts=counts)
+    ref = _reference(q, win, cmp, sink, idx, n_window, scale, counts)
+    torch.testing.assert_close(got.float(), ref, **TOL)
+
+
 def test_split_count_follows_shape():
     """No knob picks the kernel: prefill never splits, a decode launch with a real candidate
     list does, and a candidate list too short to slice falls back."""

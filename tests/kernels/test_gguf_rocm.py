@@ -73,6 +73,27 @@ def test_gguf_build_uses_freetoken_rocm_arch(monkeypatch, arches, expected):
     assert "PYTORCH_ROCM_ARCH" not in os.environ
 
 
+@pytest.mark.skipif(os.name != "nt", reason="Windows HIP link-flag patch")
+@pytest.mark.parametrize(
+    "extra_args",
+    [(False, True), (False, False, True)],  # torch 2.9.1: verbose, is_standalone; 2.13: + with_sycl
+    ids=["torch-2.9", "torch-2.13"],
+)
+def test_windows_hip_link_flags_accepts_both_prepare_ldflags_signatures(monkeypatch, extra_args):
+    import torch.utils.cpp_extension as cpp_extension
+
+    from freetoken.kernel.gguf import _windows_hip_link_flags
+
+    monkeypatch.setattr(cpp_extension, "IS_HIP_EXTENSION", True)
+    with _windows_hip_link_flags():
+        flags = cpp_extension._prepare_ldflags(["amdhip64.lib"], True, *extra_args)
+
+    assert flags[0] == "amdhip64.lib"
+    assert "torch_hip.lib" in flags and "c10_hip.lib" in flags
+    assert not any("cuda" in flag for flag in flags)
+    assert "torch_python.lib" not in flags  # is_standalone=True is the last argument
+
+
 def test_gguf_build_rejects_non_rdna_wavefront_target(monkeypatch):
     from freetoken.kernel.gguf import _rocm_gguf_build_config
 

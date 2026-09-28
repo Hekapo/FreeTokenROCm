@@ -2,6 +2,40 @@ import pytest
 import torch
 
 
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA is required")
+@pytest.mark.parametrize(
+    "num_tokens,num_experts,block_size",
+    [(8, 4, 16), (64, 256, 16), (600, 8, 16), (600, 256, 64)],
+)
+def test_moe_align_buffers_match_routing(num_tokens, num_experts, block_size):
+    from collections import Counter
+
+    from freetoken.moe.fused import moe_align_block_size
+
+    routes = [[(i * 5) % num_experts, (i * 5 + 3) % num_experts] for i in range(num_tokens)]
+    for i in range(0, num_tokens, 11):
+        routes[i][1] = -1
+    topk_ids = torch.tensor(routes, device="cuda", dtype=torch.int32)
+    sorted_ids, expert_ids, num_padded = moe_align_block_size(topk_ids, block_size, num_experts)
+    torch.cuda.synchronize()
+
+    flat = [expert for row in routes for expert in row]
+    expected_padded = sum(
+        ((flat.count(expert) + block_size - 1) // block_size) * block_size
+        for expert in range(num_experts + 1)
+    )
+    npp = int(num_padded.item())
+    assert npp == expected_padded
+    assert npp <= sorted_ids.numel()
+    tokens = sorted_ids[:npp].cpu().tolist()
+    experts = expert_ids[:npp // block_size].cpu().tolist()
+    valid_tokens = [token for token in tokens if token < len(flat)]
+    assert Counter(valid_tokens) == Counter(i for i, expert in enumerate(flat) if expert >= 0)
+    for block, expert in enumerate(experts):
+        for token in tokens[block * block_size:(block + 1) * block_size]:
+            assert token == len(flat) or flat[token] == expert
+
+
 def _activation_and_mul(gate_up: torch.Tensor, activation: str) -> torch.Tensor:
     gate, up = gate_up.chunk(2, dim=-1)
     if activation == "silu":

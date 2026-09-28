@@ -45,6 +45,8 @@ the upstream (vLLM/sglang) style of hardcoding/heuristics instead of autotuning.
 
 from __future__ import annotations
 
+import functools
+import sys
 from typing import Tuple
 
 import torch
@@ -52,6 +54,16 @@ import triton
 import triton.language as tl
 
 _SMALL_CAP = 1024  # fused single-CTA path for numel <= this (covers all decode shapes)
+
+
+@functools.cache
+def _needs_triton38_rdna4_workaround(device_index: int) -> bool:
+    return (
+        sys.platform == "win32"
+        and torch.version.hip is not None
+        and triton.__version__.startswith("3.8.")
+        and getattr(torch.cuda.get_device_properties(device_index), "gcnArchName", "").startswith("gfx120")
+    )
 
 
 @triton.jit(do_not_specialize=["numel", "sentinel"])
@@ -133,6 +145,36 @@ def _fill_and_count(
     h = tl.histogram(e_h, HIST)
     le = tl.arange(0, HIST)
     tl.atomic_add(counts_ptr + le, h, mask=(le < effective_E) & (h > 0))
+
+
+@triton.jit
+def _histogram_expert_chunks(
+    topk_ids_ptr,
+    histograms_ptr,
+    numel: tl.constexpr,
+    NUM_BINS: tl.constexpr,
+    BLOCK_SIZE: tl.constexpr,
+):
+    chunk = tl.program_id(0)
+    offsets = chunk * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    ids = tl.load(topk_ids_ptr + offsets, mask=offsets < numel, other=-1)
+    bins = tl.histogram(ids, NUM_BINS, mask=(offsets < numel) & (ids >= 0) & (ids < NUM_BINS))
+    tl.store(histograms_ptr + chunk * NUM_BINS + tl.arange(0, NUM_BINS), bins)
+
+
+@triton.jit
+def _sum_expert_histograms(
+    histograms_ptr,
+    counts_ptr,
+    num_chunks: tl.constexpr,
+    NUM_BINS: tl.constexpr,
+    BLOCK_SIZE: tl.constexpr,
+):
+    expert = tl.program_id(0)
+    chunks = tl.arange(0, BLOCK_SIZE)
+    partial = tl.load(histograms_ptr + chunks * NUM_BINS + expert,
+                      mask=chunks < num_chunks, other=0)
+    tl.store(counts_ptr + expert, tl.sum(partial, 0))
 
 
 @triton.jit
@@ -223,6 +265,10 @@ def moe_align_block_size(
     device = topk_ids.device
     numel = topk_ids.numel()
     effective_E = num_experts + 1  # mirrors fused.py's num_experts+1 convention
+    device_index = topk_ids.device.index
+    workaround = _needs_triton38_rdna4_workaround(
+        device_index if device_index is not None else torch.cuda.current_device()
+    )
 
     # Buffer sizes mirror freetoken.moe.fused.moe_align_block_size exactly.
     if numel < num_experts + 1:
@@ -261,29 +307,53 @@ def moe_align_block_size(
             num_warps=num_warps,
             num_stages=3,
         )
+        if workaround:
+            # Triton 3.8 on Windows/RDNA4 writes the sorted tokens but zeroes expert_ids.
+            _fill_expert_ids[(triton.cdiv(max(max_num_m_blocks, 1), 256),)](
+                cumsum, expert_ids, num_tokens_post_pad, block_size, effective_E,
+                effective_E.bit_length(), BLOCK_SIZE=256, num_warps=4, num_stages=3,
+            )
         return sorted_token_ids, expert_ids, num_tokens_post_pad
 
-    counts = torch.zeros((effective_E,), dtype=torch.int32, device=device)
+    counts = torch.empty((effective_E,), dtype=torch.int32, device=device) if workaround else torch.zeros(
+        (effective_E,), dtype=torch.int32, device=device
+    )
     sorted_numel = max_num_tokens_padded
     n_big = max(sorted_numel, numel, effective_E)
     grid1 = lambda meta: (triton.cdiv(n_big, meta["BLOCK_SIZE"]),)
     # Fixed via H100 sweep (9-config grid; BLOCK 256 won every kernel/shape; forced-
     # fixed beat live-tuned by 25-38% on the atomic-heavy kernels because do_bench
     # noise picks bad winners).
-    _fill_and_count[grid1](
-        topk_ids,
-        sorted_token_ids,
-        counts,
-        fill_counter,
-        numel,
-        sorted_numel,
-        numel,          # sentinel
-        effective_E,
-        triton.next_power_of_2(effective_E + 1),
-        BLOCK_SIZE=256,
-        num_warps=8,
-        num_stages=3,
-    )
+    if workaround:
+        # The 3.8 masked histogram atomic leaves every count at zero on this target.
+        sorted_token_ids.fill_(numel)
+        fill_counter.zero_()
+        hist_block_size = 1024
+        num_chunks = triton.cdiv(numel, hist_block_size)
+        num_bins = triton.next_power_of_2(effective_E)
+        histograms = torch.empty((num_chunks, num_bins), dtype=torch.int32, device=device)
+        _histogram_expert_chunks[(num_chunks,)](
+            topk_ids, histograms, numel, num_bins, hist_block_size, num_warps=4,
+        )
+        _sum_expert_histograms[(effective_E,)](
+            histograms, counts, num_chunks, num_bins,
+            triton.next_power_of_2(num_chunks), num_warps=4,
+        )
+    else:
+        _fill_and_count[grid1](
+            topk_ids,
+            sorted_token_ids,
+            counts,
+            fill_counter,
+            numel,
+            sorted_numel,
+            numel,          # sentinel
+            effective_E,
+            triton.next_power_of_2(effective_E + 1),
+            BLOCK_SIZE=256,
+            num_warps=8,
+            num_stages=3,
+        )
 
     _cumsum_experts[(1,)](
         counts,

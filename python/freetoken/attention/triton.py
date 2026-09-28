@@ -79,6 +79,15 @@ class TritonMetadata(BaseAttnMetadata):
         return self.cu_seqlens_q_gpu[1 : 1 + bs] - 1
 
 
+@dataclass
+class _MetadataBuffers:
+    host_prefix: torch.Tensor
+    device_prefix: torch.Tensor
+    host_indptr: torch.Tensor
+    device_indptr: torch.Tensor
+    copy_done: torch.cuda.Event
+
+
 class TritonAttentionBackend(BaseAttnBackend):
     def __init__(self, config: ModelConfig):
         self.config = config
@@ -89,6 +98,8 @@ class TritonAttentionBackend(BaseAttnBackend):
         self.max_graph_bs = 0
         self.max_kv_splits = 8
         self.prefill_tile_min_q = 128
+        self._metadata_buffers: list[_MetadataBuffers | None] = [None, None]
+        self._metadata_buffer_index = 0
         self.num_q_heads = int(getattr(config, "num_qo_heads", 1))
         kv_groups = getattr(config, "kv_cache_group_specs", lambda: ())()
         self.max_head_dim = max(
@@ -226,9 +237,40 @@ class TritonAttentionBackend(BaseAttnBackend):
         cached_lens = [req.cached_len for req in reqs]
         num_query_tokens = sum(seqlens_q)
         is_decode = max(seqlens_q) == 1
-        prefix_lens = torch.tensor(cached_lens, dtype=torch.int32, device=device)
-
-        indptr = torch.tensor([0] + seqlens_k, dtype=torch.int32, device=device).cumsum_(0)
+        if device.type == "cuda":
+            slot_index = self._metadata_buffer_index
+            buffers = self._metadata_buffers[slot_index]
+            if buffers is not None:
+                # The previous async copy must finish before its pinned source is rewritten.
+                buffers.copy_done.synchronize()
+            capacity = max(64, padded_size + 1)
+            if buffers is None or buffers.host_prefix.numel() < capacity:
+                buffers = _MetadataBuffers(
+                    host_prefix=torch.empty(capacity, dtype=torch.int32, pin_memory=True),
+                    device_prefix=torch.empty(capacity, dtype=torch.int32, device=device),
+                    host_indptr=torch.empty(capacity, dtype=torch.int32, pin_memory=True),
+                    device_indptr=torch.empty(capacity, dtype=torch.int32, device=device),
+                    copy_done=torch.cuda.Event(),
+                )
+                self._metadata_buffers[slot_index] = buffers
+            buffers.host_prefix[:padded_size].copy_(
+                torch.tensor(cached_lens, dtype=torch.int32)
+            )
+            buffers.host_indptr[0] = 0
+            torch.cumsum(
+                torch.tensor(seqlens_k, dtype=torch.int32),
+                dim=0,
+                out=buffers.host_indptr[1 : padded_size + 1],
+            )
+            prefix_lens = buffers.device_prefix[:padded_size]
+            indptr = buffers.device_indptr[: padded_size + 1]
+            prefix_lens.copy_(buffers.host_prefix[:padded_size], non_blocking=True)
+            indptr.copy_(buffers.host_indptr[: padded_size + 1], non_blocking=True)
+            buffers.copy_done.record(torch.cuda.current_stream(device))
+            self._metadata_buffer_index = 1 - slot_index
+        else:
+            prefix_lens = torch.tensor(cached_lens, dtype=torch.int32, device=device)
+            indptr = torch.tensor([0] + seqlens_k, dtype=torch.int32, device=device).cumsum_(0)
         if is_decode:
             cu_seqlens_q_gpu = torch.arange(0, padded_size + 1, device=device, dtype=torch.int32)
         elif all(l == 0 for l in cached_lens):

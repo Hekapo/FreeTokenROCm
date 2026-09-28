@@ -107,7 +107,11 @@ ft shell --model ~/models/Qwen3.6-35B-A3B   # serve + chat in one process
 ```
 
 - Attach mode talks to `--server URL` (default `http://127.0.0.1:1919`)
-- `/help` inside the shell lists the commands (`/think`, `/cache`, `/reset`).
+- `/help` inside the shell lists the commands (`/think`, `/retry`, `/cache`, `/reset`).
+- If a response reaches `max_tokens`, the shell warns when the answer is incomplete or empty.
+  Use `/retry 3072` to rerun the same request with a larger limit, or `/think off` then
+  `/retry` to try it without thinking when the model supports that gear. Retries are manual;
+  a limited answer is never silently treated as complete.
 
 ## ft ctl
 

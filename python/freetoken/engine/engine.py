@@ -8,6 +8,7 @@ from datetime import timedelta
 from typing import Any, Dict, Iterable, NamedTuple, Tuple
 
 import torch
+from freetoken.kernel import backend as kernel_backend
 from freetoken.attention import AttnType, attention_backend_info, create_attention_backend
 from freetoken.core import Batch, Context, Req, set_global_ctx
 from freetoken.distributed import (
@@ -456,7 +457,7 @@ class Engine:
             )
             return SingleRankProcessGroup()
 
-        if config.tp_info.size == 1 or config.use_pynccl:
+        if config.tp_info.size == 1 or (config.use_pynccl and not kernel_backend.is_rocm()):
             torch.distributed.init_process_group(
                 backend="gloo",
                 rank=config.tp_info.rank,

@@ -453,6 +453,7 @@ def _help_text(think_gears: Tuple[str, ...], pools: CachePools) -> str:
     rows = [
         ("/help", "show this message"),
         (think, think_help),
+        ("/retry [max_tokens]", "retry the last token-limited turn"),
         (f"/cache [status | {_cache_targets_hint(pools)}]", ""),
         ("", "show or resize the cache pools; token targets are"),
         ("", "rounded up to the pool's page size"),
@@ -469,6 +470,20 @@ def _help_text(think_gears: Tuple[str, ...], pools: CachePools) -> str:
     lines.append("")
     lines.append("Ctrl-C cancels the turn being generated; Esc+Enter inserts a newline.")
     return "\n".join(lines)
+
+
+def _length_notice(
+    done: TurnDone, max_tokens: int | None, has_answer: bool, can_disable_thinking: bool
+) -> str:
+    limit = str(max_tokens) if max_tokens is not None else "the configured maximum"
+    result = (
+        "The answer above may be incomplete."
+        if has_answer else "No final answer was produced."
+    )
+    advice = "Use /retry <larger max_tokens> to try the same request again."
+    if can_disable_thinking:
+        advice += " You can also use /think off, then /retry."
+    return f"(Token limit reached: {done.completion_tokens}/{limit}. {result} {advice})"
 
 
 @contextlib.contextmanager
@@ -592,6 +607,9 @@ async def _run_shell(client: ShellClient, origin: str, *, connect_grace: float) 
         display_width=terminal_size.columns,
     )
     history: List[Tuple[str, str]] = []
+    # The prompt and history before a limited turn, so /retry can replace it without replaying
+    # a partial assistant answer or silently adding an empty assistant message to the prompt.
+    last_truncated: tuple[str, List[Tuple[str, str]], Sampling] | None = None
 
     async def poll_stats(prompt_baseline: int) -> None:
         """Keep the status bar live while a turn streams: pool occupancy, VRAM, and the prompt
@@ -606,10 +624,15 @@ async def _run_shell(client: ShellClient, origin: str, *, connect_grace: float) 
             stats.set_prompt_tokens(max(0, _prompt_tokens_total(doc) - prompt_baseline))
             status_line.force()
 
-    async def run_turn(cmd: str) -> None:
-        nonlocal history
+    async def run_turn(
+        cmd: str, *, base_history: List[Tuple[str, str]] | None = None,
+        sampling: Sampling | None = None,
+    ) -> None:
+        nonlocal history, last_truncated
+        prior_history = list(history if base_history is None else base_history)
+        request_sampling = sampling or _shell_sampling()
         messages: List[dict] = []
-        for user_msg, assistant_msg in history:
+        for user_msg, assistant_msg in prior_history:
             messages.append({"role": "user", "content": user_msg})
             messages.append({"role": "assistant", "content": assistant_msg})
         messages.append({"role": "user", "content": cmd})
@@ -631,11 +654,12 @@ async def _run_shell(client: ShellClient, origin: str, *, connect_grace: float) 
 
         answer: List[str] = []
         failure: str | None = None
+        done: TurnDone | None = None
         cancelled = False
         events = client.chat(
             messages,
             model=model_id,
-            sampling=_shell_sampling(),
+            sampling=request_sampling,
             chat_template_kwargs=think_kwargs.get(think_gear) if think_gear else None,
         )
         try:
@@ -649,6 +673,7 @@ async def _run_shell(client: ShellClient, origin: str, *, connect_grace: float) 
                     output_buffer.write_content(event.text)
                     stats.add_completion_tokens(1)
                 elif isinstance(event, TurnDone):
+                    done = event
                     stats.apply_usage(event)
                 status_line.maybe()
         except ShellClientError as exc:
@@ -671,15 +696,24 @@ async def _run_shell(client: ShellClient, origin: str, *, connect_grace: float) 
             return
         if cancelled:
             write("(cancelled)\n")
-        # Keep what was actually shown, partial turn included, so a follow-up ("go on") sees
-        # the same conversation the user does. The reasoning channel is never stored: it is
-        # rendered separately and must not re-enter the next prompt.
+        # Keep visible partial answers for follow-ups, but never put a token-limited empty
+        # assistant message into the next prompt. Reasoning is rendered but never replayed.
         text = "".join(answer)
+        if done is not None and done.finish_reason == "length":
+            last_truncated = (cmd, prior_history, request_sampling)
+            history = [*prior_history, (cmd, text)] if text.strip() else prior_history
+            write(
+                _length_notice(
+                    done, request_sampling.max_tokens, bool(text.strip()), "off" in think_gears
+                ) + "\n"
+            )
+            return
         if text or not cancelled:
-            history.append((cmd, text))
+            history = [*prior_history, (cmd, text)]
+        last_truncated = None
 
     async def handle_command(cmd: str) -> None:
-        nonlocal history, think_gear, cache_pools
+        nonlocal history, think_gear, cache_pools, last_truncated
         if cmd == "":
             return
         if cmd.startswith("/"):
@@ -692,7 +726,30 @@ async def _run_shell(client: ShellClient, origin: str, *, connect_grace: float) 
                 return
             if slash == "/reset":
                 history = []
+                last_truncated = None
                 stats.reset()
+                return
+            if slash == "/retry":
+                if last_truncated is None:
+                    renderer.write("No token-limited turn to retry.\n")
+                    return
+                if len(parts) > 2 or (
+                    len(parts) == 2 and (not parts[1].isdigit() or int(parts[1]) <= 0)
+                ):
+                    renderer.write("Usage: /retry [positive max_tokens]\n")
+                    return
+                retry_cmd, retry_history, previous_sampling = last_truncated
+                retry_sampling = Sampling(
+                    max_tokens=int(parts[1]) if len(parts) == 2 else previous_sampling.max_tokens,
+                    temperature=previous_sampling.temperature,
+                    top_p=previous_sampling.top_p,
+                    top_k=previous_sampling.top_k,
+                )
+                turn_task = asyncio.create_task(
+                    run_turn(retry_cmd, base_history=retry_history, sampling=retry_sampling)
+                )
+                with _sigint_cancels(turn_task), contextlib.suppress(asyncio.CancelledError):
+                    await turn_task
                 return
             if slash in ("/think", "/thinking"):
                 arg = parts[1].lower() if len(parts) > 1 else "status"
@@ -708,6 +765,7 @@ async def _run_shell(client: ShellClient, origin: str, *, connect_grace: float) 
             renderer.write(f"Unknown command: {cmd}. Try /help.\n")
             return
 
+        last_truncated = None
         turn_task = asyncio.create_task(run_turn(cmd))
         with _sigint_cancels(turn_task), contextlib.suppress(asyncio.CancelledError):
             # run_turn reports the cancellation and closes its stream itself; suppressing here

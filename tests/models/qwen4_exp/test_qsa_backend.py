@@ -132,20 +132,24 @@ def test_flashinfer_dense_matches_the_sparse_path():
 
 @requires_cuda
 @pytest.mark.parametrize("cut", [1001, 4096, 4097], ids=["unaligned", "page-boundary", "boundary+1"])
-def test_chunked_prefill_matches_one_shot(cut: int):
+def test_chunked_prefill_matches_one_shot(cut: int, monkeypatch):
     """Cut points that are not multiples of index_ratio exercise the dual-source compress."""
     config = parsed_config()
     fixture = Fixture(config, num_pages=512)
     attn = fixture.layer(QSA_LAYER)
+    seen = selection_spy(monkeypatch, fixture.backend)
     length = 5000
     x = _inputs(fixture, [length])[0]
 
     one_shot = attn.forward(x, fixture.batch([fixture.req(0, 0, length)], "prefill"))
+    one_shot_selection = seen["indices"]
     head = fixture.req(1, 0, cut)
     attn.forward(x[:cut], fixture.batch([head], "prefill"))
     tail = fixture.req(1, cut, length)
     got = attn.forward(x[cut:], fixture.batch([tail], "prefill"))
-    assert torch.equal(got, one_shot[cut:])
+    assert torch.equal(seen["indices"], one_shot_selection[cut:])
+    # Different GEMM batch sizes round the BF16 Q/K/V projections differently.
+    torch.testing.assert_close(got.float(), one_shot[cut:].float(), rtol=0, atol=5e-4)
 
 
 @requires_cuda

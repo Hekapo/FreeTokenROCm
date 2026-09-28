@@ -116,7 +116,11 @@ def test_gemma4_router_uses_sgl_kernel_topk_softmax_semantics():
 
     weights, ids = router.forward(torch.zeros((5, cfg.hidden_size), device="cuda"))
 
-    topk_logits, ref_ids = torch.topk(logits.float(), cfg.num_experts_per_tok, dim=-1)
+    # The fused kernel breaks equal-logit ties by expert id; torch.topk does not.
+    ref_ids = torch.argsort(logits.float(), dim=-1, descending=True, stable=True)[
+        :, : cfg.num_experts_per_tok
+    ]
+    topk_logits = logits.float().gather(-1, ref_ids)
     ref_weights = torch.softmax(topk_logits, dim=-1) * per_expert_scale[ref_ids].float()
 
     torch.testing.assert_close(ids, ref_ids.to(torch.int32))

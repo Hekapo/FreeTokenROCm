@@ -90,7 +90,7 @@ if IS_ROCM:
     # platform defines to the C++ compiler; offload architecture flags belong on
     # HIP device sources and would be rejected by the host compiler here.
     extra_compile = (
-        ["/O2", "/std:c++17", "/DSTRIP_ERROR_MESSAGES", "/DNOMINMAX"]
+        ["/O2", "/std:c++20", "/DSTRIP_ERROR_MESSAGES", "/DNOMINMAX"]
         if os.name == "nt"
         else ["-O3", "-std=c++17"]
     )
