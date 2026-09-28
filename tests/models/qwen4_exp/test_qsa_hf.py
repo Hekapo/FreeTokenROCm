@@ -6,8 +6,9 @@ keys in fp32, ``(1 + w)`` rmsnorm it, rope it at the group's FIRST position, sco
 ``sum_h relu(<q_h, k_bar_b>) / sqrt(index_head_dim)`` over complete blocks, keep the top
 ``budget // ratio``, expand, then attend to that set only.
 
-Two claims: the selected sets agree (ties near the top-k boundary may differ, so the bar is a
-Jaccard floor) and, GIVEN the backend's own selection, the attention output matches. Set
+Three claims: the selected blocks have nearly the same total HF score (ties and small
+projection-rounding differences may change block ids); GIVEN the backend's own selection,
+the attention output matches; and the final output matches HF's selection. Set
 ``FREETOKEN_QWEN4_HF_PYTHON`` to an interpreter whose transformers ships ``qwen4_exp`` to run
 the same comparison against the real HF module in a subprocess.
 """
@@ -115,6 +116,35 @@ def _jaccard(indices, selection):
     return torch.tensor(scores)
 
 
+def _max_relative_score_regret(indices, selection, scores, positions, ratio, budget):
+    """Check the token layout and measure score lost against the HF top-k blocks."""
+    indices = indices.cpu()
+    scores = scores.cpu()
+    selection = [row.cpu() for row in selection]
+    block_budget = budget // ratio
+    worst = (0.0, -1)
+    for row, position in enumerate(positions.tolist()):
+        visible = (position + 1) // ratio
+        count = min(block_budget, visible)
+        mine = indices[row][indices[row] >= 0].sort().values
+        reference = selection[row]
+        assert mine.numel() == reference.numel(), f"row {row}: selected token count differs"
+        complete = mine[:count * ratio].view(count, ratio)
+        blocks = complete[:, 0] // ratio
+        expected = blocks[:, None] * ratio + torch.arange(ratio)
+        assert torch.equal(complete, expected), f"row {row}: incomplete selected block"
+        assert torch.equal(mine[count * ratio:], reference[count * ratio:]), (
+            f"row {row}: open tail differs"
+        )
+        reference_blocks = reference[:count * ratio:ratio] // ratio
+        best = scores[row, reference_blocks].double().sum().item()
+        actual = scores[row, blocks].double().sum().item()
+        regret = max(best - actual, 0.0) / max(best, 1.0)
+        if regret > worst[0]:
+            worst = (regret, row)
+    return worst
+
+
 @requires_cuda
 def test_single_layer_matches_hf_reference(monkeypatch):
     config = parsed_config()
@@ -138,12 +168,17 @@ def test_single_layer_matches_hf_reference(monkeypatch):
     reference_selection = _hf_selection(
         scores, batch.positions, args.index_ratio, args.index_budget
     )
-    jaccard = _jaccard(indices, reference_selection)
-    assert jaccard.min() >= 0.97, f"worst-row Jaccard {jaccard.min():.4f}"
+    regret, row = _max_relative_score_regret(
+        indices, reference_selection, scores, batch.positions, args.index_ratio, args.index_budget
+    )
+    assert regret <= 1e-4, f"row {row}: relative HF selection score loss {regret:.6g}"
 
     own_selection = [row[row >= 0].long().sort().values for row in indices]
-    reference = _hf_layer_output(x, attn, config, batch.positions, own_selection)
-    torch.testing.assert_close(got.float(), reference, rtol=2e-2, atol=2e-2)
+    own_reference = _hf_layer_output(x, attn, config, batch.positions, own_selection)
+    torch.testing.assert_close(got.float(), own_reference, rtol=2e-2, atol=2e-2)
+
+    hf_reference = _hf_layer_output(x, attn, config, batch.positions, reference_selection)
+    torch.testing.assert_close(got.float(), hf_reference, rtol=2e-2, atol=2e-2)
 
 
 _HF_DRIVER = '''
@@ -242,12 +277,19 @@ def test_single_layer_matches_upstream_hf(tmp_path, monkeypatch):
         },
         payload,
     )
+    # The upstream reference may use a different ROCm SDK than this test process.
+    hf_env = os.environ.copy()
+    for name in ("ROCM_SDK_TARGET_FAMILY", "HIP_PATH", "ROCM_HOME", "ROCM_PATH",
+                 "TRITON_LIBHIP_PATH", "PYTORCH_ROCM_ARCH", "TVM_FFI_ROCM_ARCH_LIST"):
+        hf_env.pop(name, None)
     subprocess.run(
         [os.environ["FREETOKEN_QWEN4_HF_PYTHON"], str(driver), str(payload), str(result)],
-        check=True, stdout=sys.stderr, timeout=1800,
+        check=True, stdout=sys.stderr, timeout=1800, env=hf_env,
     )
     upstream = torch.load(result, map_location=fixture.device, weights_only=False)
-    selection = [row.nonzero().flatten() for row in upstream["selected"].to(fixture.device)]
-    jaccard = _jaccard(seen["indices"], selection)
-    assert jaccard.min() >= 0.97, f"worst-row Jaccard {jaccard.min():.4f}"
-    torch.testing.assert_close(got.float(), upstream["out"].float(), rtol=2e-2, atol=2e-2)
+    try:
+        torch.testing.assert_close(got.float(), upstream["out"].float(), rtol=2e-2, atol=2e-2)
+    except AssertionError as exc:
+        selection = [row.nonzero().flatten() for row in upstream["selected"].to(fixture.device)]
+        jaccard = _jaccard(seen["indices"], selection)
+        raise AssertionError(f"upstream HF output differs; worst-row Jaccard {jaccard.min():.4f}") from exc

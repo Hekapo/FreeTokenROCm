@@ -5,9 +5,22 @@
 
 from __future__ import annotations
 
+import functools
+import sys
+
 import torch
 import triton
 import triton.language as tl
+
+
+@functools.cache
+def _needs_triton38_rdna4_workaround(device: torch.device) -> bool:
+    return (
+        sys.platform == "win32"
+        and torch.version.hip is not None
+        and triton.__version__.startswith("3.8.")
+        and getattr(torch.cuda.get_device_properties(device), "gcnArchName", "").startswith("gfx120")
+    )
 
 
 @triton.jit
@@ -298,6 +311,8 @@ def qsa_sparse_paged_attention(
             device=q.device,
         )
 
+    # Triton 3.8's two-stage RDNA4 codegen can exceed the 64 KiB LDS limit.
+    rdna4_triton38 = _needs_triton38_rdna4_workaround(q.device)
     partial_grid = (q.shape[0], k_cache.shape[2], num_splits)
     _qsa_sparse_paged_gqa_splitk_kernel[partial_grid](
         q,
@@ -335,7 +350,7 @@ def qsa_sparse_paged_attention(
         BLOCK_M=block_m,
         BLOCK_N=block_n,
         num_warps=partial_warps,
-        num_stages=2,
+        num_stages=1 if rdna4_triton38 else 2,
     )
     if num_splits == 1:
         return out
