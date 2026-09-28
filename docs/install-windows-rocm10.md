@@ -41,7 +41,9 @@ Keep `triton-windows` at **3.8.0.post28** for this profile. The initial ROCm 10
 candidate produced incorrect MoE alignment results and a HIP launch failure
 with Triton 3.8 on `gfx1201`. The source fixes in this fork route the affected
 alignment and QSA kernels around those failures; targeted tests and a 30-minute
-Qwen3.6 service soak passed with this exact version. The validated Windows
+Qwen3.6 service soak passed with this exact Triton version in local candidate
+stages. The merged `main` commit has passed focused tests and a launch preflight;
+it has not had another 30-minute soak. The validated Windows
 `cp312` wheel has SHA-256
 `06435b922ebabbfcb3fb0f4b4b2257a2676dd39cc263a562be356bd58c15c9b8`.
 The separate 3.7.1.post27 environment remains available for local rollback.
