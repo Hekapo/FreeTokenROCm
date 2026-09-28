@@ -46,6 +46,34 @@ def _t(xs: Sequence[int], dtype=torch.int64) -> torch.Tensor:
     return torch.tensor(list(xs), dtype=dtype)
 
 
+@pytest.mark.parametrize("kind", KINDS)
+def test_inserted_key_does_not_retain_request_buffer(kind: str) -> None:
+    ad, _ = _spec(kind, 4).build()
+    request_buffer = torch.arange(2048, dtype=torch.int64)
+    input_ids = request_buffer[:12]
+    slots = torch.arange(12, dtype=torch.int32)
+
+    if kind == "plain":
+        ad.cache.insert_prefix(input_ids, slots)
+    elif kind == "swa":
+        ad.cache.insert(input_ids, slots, swa_evicted_seqlen=4)
+    else:
+        ad.cache.insert(input_ids, slots, mamba_value=1)
+
+    nodes = ad.nodes()
+    assert len(nodes) == (2 if kind == "swa" else 1)
+    keys_before = [node._key.clone() for node in nodes]
+    request_storage = request_buffer.untyped_storage()
+    max_key_bytes = input_ids.numel() * input_ids.element_size()
+    for node in nodes:
+        key_storage = node._key.untyped_storage()
+        assert key_storage.data_ptr() != request_storage.data_ptr()
+        assert key_storage.nbytes() <= max_key_bytes
+
+    request_buffer[:12].fill_(999)
+    assert all(torch.equal(node._key, key) for node, key in zip(nodes, keys_before))
+
+
 # =============================================================================================
 # 1. SHARED TREE MACHINERY, tested once and class-free
 # =============================================================================================
