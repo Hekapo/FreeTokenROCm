@@ -151,6 +151,13 @@ def _run_scheduler(args: ServerArgs, ack_queue: mp.Queue[str]) -> None:
         if args.silent_output:
             logging.disable(logging.INFO)
 
+        stack_interval = os.environ.get("FT_DIAG_SCHED_STACK_INTERVAL_S")
+        if stack_interval and args.tp_info.is_primary():
+            import faulthandler
+
+            faulthandler.dump_traceback_later(
+                float(stack_interval), repeat=True, file=sys.stderr,
+            )
         try:
             scheduler.run_forever()
         except KeyboardInterrupt:
@@ -167,6 +174,9 @@ def _run_scheduler(args: ServerArgs, ack_queue: mp.Queue[str]) -> None:
             _report_startup_error(ack_queue, exc)
             _drain_device_before_exit()
             raise
+        finally:
+            if stack_interval and args.tp_info.is_primary():
+                faulthandler.cancel_dump_traceback_later()
 
 
 def launch_server(

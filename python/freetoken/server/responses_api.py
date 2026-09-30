@@ -172,7 +172,9 @@ async def handle_responses(
         return StreamingResponse(events, media_type="text/event-stream")
 
     try:
-        result = await generate_full(uid, spec, state, source="/v1/responses")
+        result = await state.await_with_cancellation(
+            generate_full(uid, spec, state, source="/v1/responses"), request, uid
+        )
     except GenerationError as exc:
         return _error_response(503 if is_engine_failure(exc.code) else 400, str(exc), exc.code)
     response = build_responses_response(result, req, response_id, created, cache_report=cache_report)

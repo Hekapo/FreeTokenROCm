@@ -39,7 +39,7 @@ from .args import ServerArgs
 from .anthropic_api import register_anthropic_routes
 from .accounting import MAINTENANCE_LOCK, AdmissionClosedError, register_accounting_routes
 from .control_api import register_control_routes
-from .generation import ENGINE_UNAVAILABLE
+from .generation import ENGINE_UNAVAILABLE, KEEPALIVE, submit_tokenize_message, with_keepalive
 from .openai_api import register_openai_routes
 from . import request_ring
 from .access_log_filter import install_polling_access_log_filter
@@ -167,6 +167,8 @@ class FrontendManager:
     initialized: bool = False
     ack_map: Dict[int, List[UserReply]] = field(default_factory=dict)
     event_map: Dict[int, asyncio.Event] = field(default_factory=dict)
+    _generation_gate: asyncio.Semaphore | None = field(default=None, init=False, repr=False)
+    _generation_gate_uids: set[int] = field(default_factory=set, init=False, repr=False)
     # Stable identity for this serve process. Generated before the backend is ready so every
     # /health state (loading/ok/error) and /v1/stats can identify the same engine generation.
     instance_id: str = field(default_factory=lambda: str(uuid.uuid4()))
@@ -232,6 +234,9 @@ class FrontendManager:
     def __post_init__(self) -> None:
         if self.stats is None:
             self.stats = StatsTracker()
+        limit = int(getattr(self.config, "frontend_generation_limit", 0))
+        if limit > 0:
+            self._generation_gate = asyncio.Semaphore(limit)
 
     def frontend_tokenizer(self) -> Any:
         """Lazily build and cache the frontend-side tokenizer used by count_tokens (see the
@@ -273,6 +278,31 @@ class FrontendManager:
             self.stats.on_new_user(uid)
             return uid
 
+    async def admit_generation(self) -> int:
+        gate = self._generation_gate
+        if gate is not None:
+            await gate.acquire()
+        try:
+            uid = self.new_user()
+        except BaseException:
+            if gate is not None:
+                gate.release()
+            raise
+        if gate is not None:
+            self._generation_gate_uids.add(uid)
+        return uid
+
+    def release_generation_slot(self, uid: int) -> None:
+        if uid in self._generation_gate_uids:
+            self._generation_gate_uids.remove(uid)
+            self._generation_gate.release()
+
+    def discard_unsubmitted_generation(self, uid: int) -> None:
+        self.ack_map.pop(uid, None)
+        self.event_map.pop(uid, None)
+        self.stats.on_abort(uid)
+        self.release_generation_slot(uid)
+
     async def listen(self):
         while True:
             msg = await self.recv_tokenizer.get()
@@ -284,6 +314,8 @@ class FrontendManager:
                 # client disconnects and abort_user removes its ack queue. Delivery to a live
                 # request remains gated below, but observation must happen first.
                 self.stats.observe(msg)
+                if msg.finished:
+                    self.release_generation_slot(msg.uid)
                 if msg.uid not in self.ack_map:
                     continue
                 self.ack_map[msg.uid].append(msg)
@@ -350,6 +382,10 @@ class FrontendManager:
             return  # listener never started -> no request could be waiting
 
         def _fail_all() -> None:
+            # An aborted HTTP client may already be absent from ack_map while its
+            # backend request still owns an admission slot pending the abort ack.
+            for uid in list(self._generation_gate_uids):
+                self.release_generation_slot(uid)
             for uid in list(self.ack_map):
                 reply = UserReply(
                     uid=uid,
@@ -359,6 +395,7 @@ class FrontendManager:
                     error_code=ENGINE_UNAVAILABLE,
                 )
                 self.stats.observe(reply)
+                self.release_generation_slot(uid)
                 self.ack_map[uid].append(reply)
                 event = self.event_map.get(uid)
                 if event is not None:
@@ -402,7 +439,10 @@ class FrontendManager:
             self.event_map.pop(uid, None)
 
     async def stream_generate(self, uid: int):
-        async for ack in self.wait_for_ack(uid):
+        async for ack in with_keepalive(self.wait_for_ack(uid), 15.0):
+            if ack is KEEPALIVE:
+                yield b": prefill or queue in progress\n\n"
+                continue
             if ack.incremental_output:
                 # SSE: JSON-encode (so a newline inside a token can't break the frame)
                 # and terminate every event with a blank line.
@@ -413,6 +453,7 @@ class FrontendManager:
         logger.debug("Finished streaming response for user %s", uid)
 
     async def stream_with_cancellation(self, generator, request: Request, uid: int):
+        completed = False
         try:
             async for chunk in generator:
                 # detect if the client has disconnected
@@ -420,9 +461,49 @@ class FrontendManager:
                     logger.info("Client disconnected for user %s", uid)
                     raise asyncio.CancelledError
                 yield chunk
-        except asyncio.CancelledError:
-            asyncio.create_task(self.abort_user(uid))
-            raise
+            completed = True
+        finally:
+            # Starlette may close the response with GeneratorExit while the source iterator
+            # waits for a long prefill. The abort must not depend on another token arriving.
+            if not completed:
+                asyncio.create_task(self.abort_user(uid))
+            await generator.aclose()
+
+    async def await_with_cancellation(self, awaitable, request: Request | None, uid: int):
+        """Abort a non-streaming generation when its HTTP client leaves during prefill."""
+        if request is None:
+            return await awaitable
+        task = asyncio.create_task(awaitable)
+        finished = False
+        try:
+            while not task.done():
+                await asyncio.wait({task}, timeout=1.0)
+                if not task.done() and await request.is_disconnected():
+                    raise asyncio.CancelledError
+            result = await task
+            finished = True
+            return result
+        finally:
+            if not finished:
+                if not task.done():
+                    task.cancel()
+                asyncio.create_task(self.abort_user(uid))
+
+    async def acks_with_cancellation(self, generator, request: Request | None, uid: int):
+        """Poll disconnects while a non-stream completion waits for its next ack."""
+        completed = False
+        try:
+            async for ack in with_keepalive(generator, 1.0):
+                if request is not None and await request.is_disconnected():
+                    raise asyncio.CancelledError
+                if ack is KEEPALIVE:
+                    continue
+                if ack.finished:
+                    completed = True
+                yield ack
+        finally:
+            if not completed:
+                asyncio.create_task(self.abort_user(uid))
 
     async def abort_user(self, uid: int):
         await asyncio.sleep(0.1)
@@ -899,16 +980,15 @@ async def generate(req: GenerateRequest, request: Request):
         return JSONResponse({"error": f"server unavailable: {detail}"}, status_code=503)
     if req.max_tokens < 1:
         return JSONResponse({"error": f"max_tokens must be at least 1, got {req.max_tokens}"}, status_code=400)
-    uid = state.new_user()
-    await state.send_one(
-        TokenizeMsg(
+    uid = await submit_tokenize_message(
+        state, lambda uid: TokenizeMsg(
             uid=uid,
             text=req.prompt,
             sampling_params=SamplingParams(
                 ignore_eos=req.ignore_eos,
                 max_tokens=req.max_tokens,
             ),
-        )
+        ),
     )
 
     return StreamingResponse(

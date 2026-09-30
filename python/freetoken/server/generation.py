@@ -16,7 +16,7 @@ from __future__ import annotations
 import asyncio
 import json
 import time
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -270,20 +270,34 @@ def split_tool_lists(
 # --------------------------------------------------------------------------- #
 # The primitive: submit + generate (consume a GenSpec, drive the engine waist).
 # --------------------------------------------------------------------------- #
+async def submit_tokenize_message(
+    state: Any, build_message: Callable[[int], TokenizeMsg],
+) -> int:
+    admit = getattr(state, "admit_generation", None)
+    uid = await admit() if admit is not None else state.new_user()
+    try:
+        await state.send_one(build_message(uid))
+    except BaseException:
+        discard = getattr(state, "discard_unsubmitted_generation", None)
+        if discard is not None:
+            discard(uid)
+        raise
+    return uid
+
+
 async def submit_generation(spec: GenSpec, state: Any) -> int:
     """Enqueue one generation from a GenSpec; return its uid. Every protocol adapter
     calls this — it takes the neutral spec, not a wire request type."""
-    uid = state.new_user()
-    await state.send_one(
-        TokenizeMsg(
+    return await submit_tokenize_message(
+        state,
+        lambda uid: TokenizeMsg(
             uid=uid,
             text=spec.messages,
             sampling_params=spec.sampling_params,
             chat_template_kwargs=spec.chat_template_kwargs,
             tools=spec.template_tools,
-        )
+        ),
     )
-    return uid
 
 
 async def count_prompt_tokens(

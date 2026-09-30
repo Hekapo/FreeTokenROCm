@@ -4,6 +4,7 @@ import asyncio
 import json
 from types import SimpleNamespace
 
+import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from freetoken.message import TokenizeMsg, UserReply
@@ -20,6 +21,70 @@ from freetoken.server.openai_api import (
 
 def run(coro):
     return asyncio.run(coro)
+
+
+def test_nonstream_disconnect_aborts_during_silent_prefill():
+    from freetoken.server.api_server import FrontendManager
+
+    class Manager:
+        acks_with_cancellation = FrontendManager.acks_with_cancellation
+
+        def __init__(self):
+            self.aborted = []
+
+        async def abort_user(self, uid):
+            self.aborted.append(uid)
+
+    class DisconnectedRequest:
+        async def is_disconnected(self):
+            return True
+
+    async def silent_acks():
+        await asyncio.sleep(60)
+        yield None
+
+    async def check():
+        manager = Manager()
+        generator = manager.acks_with_cancellation(silent_acks(), DisconnectedRequest(), 42)
+        with pytest.raises(asyncio.CancelledError):
+            await asyncio.wait_for(anext(generator), timeout=3)
+        await asyncio.sleep(0)
+        assert manager.aborted == [42]
+
+    run(check())
+
+
+def test_stream_close_aborts_without_waiting_for_next_token():
+    from freetoken.server.api_server import FrontendManager
+
+    class Manager:
+        stream_with_cancellation = FrontendManager.stream_with_cancellation
+
+        def __init__(self):
+            self.aborted = []
+
+        async def abort_user(self, uid):
+            self.aborted.append(uid)
+
+    class ConnectedRequest:
+        async def is_disconnected(self):
+            return False
+
+    async def silent_after_first_chunk():
+        yield b"first"
+        await asyncio.sleep(60)
+
+    async def check():
+        manager = Manager()
+        generator = manager.stream_with_cancellation(
+            silent_after_first_chunk(), ConnectedRequest(), 42
+        )
+        assert await asyncio.wait_for(anext(generator), timeout=1) == b"first"
+        await generator.aclose()
+        await asyncio.sleep(0)
+        assert manager.aborted == [42]
+
+    run(check())
 
 
 class FakeState:
@@ -48,6 +113,13 @@ class FakeState:
         assert uid == 42
         for reply in self.replies:
             yield reply
+
+    async def acks_with_cancellation(self, generator, request, uid):
+        async for ack in generator:
+            yield ack
+
+    async def await_with_cancellation(self, awaitable, request, uid):
+        return await awaitable
 
 
 def tool_schema():
@@ -452,6 +524,22 @@ def test_models_route_publishes_the_model_context_length():
 
     assert card["max_model_len"] == 262144
     assert card["context_length"] == 262144
+
+
+def test_models_route_publishes_allocated_kv_limit():
+    state = FakeState([])
+    state.config.max_seq_len = 8192
+    state.config.page_size = 1
+    state.config.max_output_tokens = 2048
+    state.stats = SimpleNamespace(kv_total_pages=6144)
+    app = FastAPI()
+    register_openai_routes(app, lambda: state, lambda: {})
+
+    card = TestClient(app).get("/v1/models").json()["data"][0]
+
+    assert card["context_length"] == 8192
+    assert card["effective_context_length"] == 6144
+    assert card["default_max_output_tokens"] == 2048
 
 
 async def _collect(generator):

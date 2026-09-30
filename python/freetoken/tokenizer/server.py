@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import multiprocessing as mp
+import os
 from typing import Any, List
 
 import torch
@@ -143,6 +144,7 @@ def tokenize_worker(
     assert local_bs > 0
     tokenizer = load_tokenizer(tokenizer_path)
     logger = init_logger(__name__, f"tokenizer_{tokenizer_id}")
+    trace_sampled_ids = os.environ.get("FREETOKEN_TRACE_TOKEN_IDS") == "1"
 
     from .detokenize import DetokenizeManager
     from .tokenize import TokenizeManager
@@ -207,6 +209,12 @@ def tokenize_worker(
             )
             sampled_replies: List[UserReply] = []
             if len(detokenize_msg) > 0:
+                if trace_sampled_ids:
+                    for msg in detokenize_msg:
+                        logger.info(
+                            "sampled_token_id uid=%d id=%d finished=%s",
+                            msg.uid, msg.next_token, msg.finished,
+                        )
                 replies = detokenize_manager.detokenize(detokenize_msg)
                 sampled_replies = [
                     UserReply(
