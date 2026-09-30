@@ -947,6 +947,16 @@ class Engine:
             req.complete_one()
 
         batch_logits = logits[: batch.size]
+        # Opt-in diagnostic for long-context qualification. A sampled device-to-host check
+        # happens before the sampler, so invalid logits fail loudly instead of producing text.
+        check_every = int(os.environ.get("FT_DIAG_LOGIT_CHECK_EVERY", "0"))
+        if check_every > 0:
+            count = getattr(self, "_diag_logit_forward_count", 0) + 1
+            self._diag_logit_forward_count = count
+            if batch.is_prefill or count == 1 or count % check_every == 0:
+                if not bool(torch.isfinite(batch_logits).all().item()):
+                    logger.error("non-finite logits before sampler: phase=%s forward=%d", batch.phase, count)
+                    raise RuntimeError("non-finite logits before sampler")
         next_tokens_gpu = self.sampler.sample(batch_logits, args).to(torch.int32)
         next_tokens_cpu = next_tokens_gpu.to("cpu", non_blocking=True)
         copy_done_event = torch.cuda.Event()

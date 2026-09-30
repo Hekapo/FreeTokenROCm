@@ -209,6 +209,8 @@ class ShellStats:
     status: str = "idle"
     prompt_tokens: int = 0
     completion_tokens: int = 0
+    context_limit: int = 0
+    model_context_limit: int = 0
     kv_used_pages: int = 0
     kv_total_pages: int = 0
     # KV page unit, so the status bar can render kv in tokens (pages x page_size).
@@ -270,6 +272,8 @@ class ShellStats:
             self.kv_used_pages = int(kv.get("used_pages", 0) or 0)
             self.kv_total_pages = int(kv["total_pages"])
             self.page_size = int(kv.get("page_size", 1) or 1)
+            if self.model_context_limit:
+                self.context_limit = min(self.model_context_limit, self.kv_total_pages * self.page_size)
         mamba = doc.get("mamba")
         if isinstance(mamba, dict) and int(mamba.get("total_slots", 0) or 0) > 0:
             self.mamba_used_slots = int(mamba.get("used_slots", 0) or 0)
@@ -316,6 +320,10 @@ class ShellStats:
             cache_status += f" {format_percent(self.cache_rate)}"
         token_status = f"↓{self.prompt_tokens} ↑{self.completion_tokens} {self.tok_s(now):.1f} tok/s"
         segments = [prefix, token_status, cache_status]
+        if self.context_limit > 0:
+            remaining = max(0, self.context_limit - self.prompt_tokens - self.completion_tokens)
+            label = "estimated remaining" if self.status in ("prefill", "decode") else "remaining"
+            segments.append(f"ctx {self.context_limit} {label} {remaining}")
         if self.kv_total_pages > 0:
             kv_pct = format_percent(self.kv_used_pages / self.kv_total_pages)
             ps = self.page_size
@@ -593,8 +601,19 @@ async def _run_shell(client: ShellClient, origin: str, *, connect_grace: float) 
     stats = ShellStats(model_label=_format_shell_model_label(model_id), think_gear=think_gear)
     stats.apply_geometry(geometry)
     stats.apply_stats_doc(stats_doc)
+    configured_context = getattr(client, "context_length", None) or 0
+    stats.model_context_limit = configured_context
+    kv_context = stats.kv_total_pages * stats.page_size
+    stats.context_limit = min(configured_context, kv_context) if kv_context else configured_context
 
     write(f"FreeToken shell -> {model_id} @ {origin}  (/help for commands, /exit to quit)\n")
+    if stats.context_limit:
+        default_output = ENV.SHELL_MAX_TOKENS.value or 2048
+        write(
+            f"Context budget: {stats.context_limit} total tokens; default output {default_output}; "
+            f"at most {max(0, stats.context_limit - default_output)} input tokens including chat template. "
+            "The server counts the rendered prompt and may shorten output to fit.\n"
+        )
 
     terminal_size = shutil.get_terminal_size((SHELL_FALLBACK_WIDTH, 24))
     status_line = ShellStatusLine(

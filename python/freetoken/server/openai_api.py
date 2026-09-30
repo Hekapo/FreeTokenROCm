@@ -23,6 +23,7 @@ from .api_models import (
 from .function_call_parser import ToolCallItem
 from .request_logger import log_request
 from .generation import (
+    KEEPALIVE,
     DEFAULT_MAX_OUTPUT_TOKENS,
     ContentDelta,
     GenDone,
@@ -39,6 +40,8 @@ from .generation import (
     render_messages,
     resolve_sampling,
     submit_generation,
+    submit_tokenize_message,
+    with_keepalive,
 )
 
 #: The wire superset plus "off", DeepSeek's disable synonym that
@@ -137,12 +140,19 @@ def register_openai_routes(
         state = get_state()
         model_id = _served_model_name(state)
         ctx = _model_context_length(state)
+        kv_pages = int(getattr(getattr(state, "stats", None), "kv_total_pages", 0) or 0)
+        kv_tokens = kv_pages * int(getattr(state.config, "page_size", 1) or 1)
+        effective_ctx = min(ctx, kv_tokens) if ctx and kv_tokens else ctx
         efforts, default_effort = await _effort_fields(state)
         return ModelList(data=[ModelCard(
             id=model_id,
             root=state.config.model_path,
             max_model_len=ctx,
             context_length=ctx,
+            effective_context_length=effective_ctx,
+            default_max_output_tokens=(
+                getattr(state.config, "max_output_tokens", None) or DEFAULT_MAX_OUTPUT_TOKENS
+            ),
             supported_reasoning_efforts=efforts,
             default_reasoning_effort=default_effort,
         )])
@@ -206,7 +216,9 @@ async def handle_chat_completion(
         return StreamingResponse(chunks, media_type="text/event-stream")
 
     try:
-        result = await generate_full(uid, spec, state, source="/v1/chat/completions")
+        result = await state.await_with_cancellation(
+            generate_full(uid, spec, state, source="/v1/chat/completions"), request, uid
+        )
     except GenerationError as exc:
         return _generation_error_response(str(exc), exc.code)
     message: dict[str, Any] = {"role": "assistant", "content": result.content}
@@ -257,7 +269,9 @@ async def stream_chat_completion_chunks(
     cached_tokens = 0
     tool_calls_sent = 0
     open_tool: dict[str, Any] | None = None
-    events = generate_events(uid, spec, state, source="/v1/chat/completions")
+    events = with_keepalive(
+        generate_events(uid, spec, state, source="/v1/chat/completions"), 15.0
+    )
     while True:
         try:
             ev = await events.__anext__()
@@ -270,6 +284,9 @@ async def stream_chat_completion_chunks(
                 {"error": {"message": str(exc), "type": _generation_error_type(exc.code), "code": exc.code}}
             )
             break
+        if ev is KEEPALIVE:
+            yield b": prefill or queue in progress\n\n"
+            continue
         if isinstance(ev, ReasoningDelta):
             yield _sse(
                 _chat_chunk(
@@ -405,11 +422,10 @@ async def handle_completion(
     if req.stream:
         if len(prompts) != 1:
             return create_error_response("Streaming completions only support a single text prompt")
-        uid = state.new_user()
-        await state.send_one(
-            TokenizeMsg(uid=uid, text=prompts[0], sampling_params=_resolve_sampling(
+        uid = await submit_tokenize_message(
+            state, lambda uid: TokenizeMsg(uid=uid, text=prompts[0], sampling_params=_resolve_sampling(
                 req, model_sampling, default_max_tokens=default_max_tokens
-            ))
+            )),
         )
         chunks = stream_completion_chunks(uid, req, state)
         if request is not None:
@@ -421,19 +437,18 @@ async def handle_completion(
     completion_tokens = 0
     cached_tokens = 0
     for index, prompt in enumerate(prompts):
-        uid = state.new_user()
-        await state.send_one(
-            TokenizeMsg(
+        uid = await submit_tokenize_message(
+            state, lambda uid: TokenizeMsg(
                 uid=uid,
                 text=prompt,
                 sampling_params=_resolve_sampling(
                     req, model_sampling, default_max_tokens=default_max_tokens
                 ),
-            )
+            ),
         )
         text = ""
         finish_reason = "stop"
-        async for ack in state.wait_for_ack(uid):
+        async for ack in state.acks_with_cancellation(state.wait_for_ack(uid), request, uid):
             if getattr(ack, "error", None):
                 return _generation_error_response(ack.error, getattr(ack, "error_code", None))
             prompt_tokens += ack.prompt_tokens_delta
@@ -460,7 +475,10 @@ async def stream_completion_chunks(uid: int, req: CompletionRequest, state: Any)
     completion_tokens = 0
     cached_tokens = 0
     finish_reason = "stop"
-    async for ack in state.wait_for_ack(uid):
+    async for ack in with_keepalive(state.wait_for_ack(uid), 15.0):
+        if ack is KEEPALIVE:
+            yield b": prefill or queue in progress\n\n"
+            continue
         if getattr(ack, "error", None):
             code = getattr(ack, "error_code", None)
             yield _sse({"error": {"message": ack.error, "type": _generation_error_type(code), "code": code}})

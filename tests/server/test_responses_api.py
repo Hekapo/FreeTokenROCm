@@ -338,6 +338,13 @@ class FakeState:
                             prompt_tokens_delta=pt, completion_tokens_delta=ct,
                             cached_tokens=self._cached_tokens if i == 0 else 0)
 
+    async def acks_with_cancellation(self, generator, request, uid):
+        async for ack in generator:
+            yield ack
+
+    async def await_with_cancellation(self, awaitable, request, uid):
+        return await awaitable
+
     async def stream_with_cancellation(self, gen, request, uid):
         async for chunk in gen:
             yield chunk

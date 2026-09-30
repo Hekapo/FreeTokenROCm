@@ -7,7 +7,10 @@ import json
 import threading
 from types import SimpleNamespace
 
+import pytest
+
 import freetoken.server.api_server as api_server
+from freetoken.message import UserReply
 from freetoken.server.api_server import FrontendManager
 from freetoken.server.generation import ENGINE_UNAVAILABLE
 from freetoken.server.openai_api import _generation_error_response
@@ -21,6 +24,93 @@ def _manager() -> FrontendManager:
         recv_tokenizer=None,
         maintenance_state="serving",
     )
+
+
+def test_frontend_limit_waits_for_terminal_reply_even_after_abort():
+    async def _run():
+        sent = []
+        replies = asyncio.Queue()
+
+        class Sender:
+            async def put(self, msg):
+                sent.append(msg)
+
+        manager = FrontendManager(
+            config=SimpleNamespace(frontend_generation_limit=1),
+            send_tokenizer=Sender(), recv_tokenizer=replies,
+            maintenance_state="serving",
+        )
+        first = await manager.admit_generation()
+        manager._create_listener_once()
+        second = asyncio.create_task(manager.admit_generation())
+        await asyncio.sleep(0)
+        assert not second.done()
+
+        await manager.abort_user(first)
+        assert not second.done()
+        assert len(sent) == 1
+
+        await replies.put(UserReply(uid=first, incremental_output="", finished=True,
+                                    error="request aborted"))
+        next_uid = await asyncio.wait_for(second, timeout=1)
+        assert next_uid != first
+        await replies.put(UserReply(uid=next_uid, incremental_output="", finished=True))
+        await asyncio.sleep(0)
+
+    asyncio.run(_run())
+
+
+def test_frontend_limit_survives_cancelled_waiter_and_backend_death():
+    async def _run():
+        manager = FrontendManager(
+            config=SimpleNamespace(frontend_generation_limit=1),
+            send_tokenizer=None, recv_tokenizer=None,
+            maintenance_state="serving",
+        )
+        first = await manager.admit_generation()
+        cancelled = asyncio.create_task(manager.admit_generation())
+        await asyncio.sleep(0)
+        cancelled.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await cancelled
+
+        manager._loop = asyncio.get_running_loop()
+        waiting = asyncio.create_task(manager.admit_generation())
+        await asyncio.sleep(0)
+        assert not waiting.done()
+        manager.maintenance_state = "failed"
+        manager.fail_inflight_requests("scheduler exited")
+        with pytest.raises(api_server.AdmissionClosedError):
+            await asyncio.wait_for(waiting, timeout=1)
+        assert first not in manager._generation_gate_uids
+        assert manager.stats.active == 0
+
+    asyncio.run(_run())
+
+
+def test_frontend_limit_releases_aborted_request_on_backend_death():
+    async def _run():
+        manager = FrontendManager(
+            config=SimpleNamespace(frontend_generation_limit=1),
+            send_tokenizer=None, recv_tokenizer=None,
+            maintenance_state="serving",
+        )
+        first = await manager.admit_generation()
+        manager.ack_map.pop(first)
+        manager.event_map.pop(first)
+        manager.stats.on_abort(first)
+
+        waiting = asyncio.create_task(manager.admit_generation())
+        await asyncio.sleep(0)
+        assert not waiting.done()
+        manager._loop = asyncio.get_running_loop()
+        manager.maintenance_state = "failed"
+        manager.fail_inflight_requests("scheduler exited")
+        with pytest.raises(api_server.AdmissionClosedError):
+            await asyncio.wait_for(waiting, timeout=1)
+        assert manager._generation_gate_uids == set()
+
+    asyncio.run(_run())
 
 
 def test_inflight_requests_are_failed_from_the_supervisor_thread():

@@ -3,6 +3,40 @@ from __future__ import annotations
 from types import SimpleNamespace
 
 
+def test_prompt_and_output_fit_effective_kv_limit():
+    import torch
+
+    from freetoken.core import SamplingParams
+    from freetoken.message import ErrorReplyMsg, UserMsg
+    from freetoken.scheduler.scheduler import Scheduler
+
+    admitted = []
+    errors = []
+    scheduler = SimpleNamespace(
+        engine=SimpleNamespace(max_seq_len=8192),
+        prefill_manager=SimpleNamespace(add_one_req=admitted.append),
+        send_result=errors.extend,
+    )
+    too_long = UserMsg(
+        uid=1,
+        input_ids=torch.zeros(8192, dtype=torch.int32),
+        sampling_params=SamplingParams(max_tokens=1),
+    )
+    Scheduler._process_one_msg(scheduler, too_long)
+    assert not admitted
+    assert len(errors) == 1 and isinstance(errors[0], ErrorReplyMsg)
+    assert errors[0].code == "context_length_exceeded"
+
+    fits_after_clamp = UserMsg(
+        uid=2,
+        input_ids=torch.zeros(6144, dtype=torch.int32),
+        sampling_params=SamplingParams(max_tokens=4096),
+    )
+    Scheduler._process_one_msg(scheduler, fits_after_clamp)
+    assert admitted == [fits_after_clamp]
+    assert fits_after_clamp.sampling_params.max_tokens == 2048
+
+
 def test_kv_usage_pages_excludes_evictable_prefix_cache():
     # page_usage now lives on the CacheManagerLike interface (polymorphic vs DSV4); test the
     # generic formula there. The unbound method works on a duck-typed namespace.

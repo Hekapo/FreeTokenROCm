@@ -54,6 +54,8 @@ class ServerArgs(SchedulerConfig):
     # Default max output (decode) tokens for a request that omits one. None falls back to the
     # adapter's built-in default (32k).
     max_output_tokens: int | None = None
+    # Optional frontend admission limit. 0 leaves the scheduler's own queue in control.
+    frontend_generation_limit: int = 0
     # Report the prefix-cache hit in each response's usage block (OpenAI
     # prompt_tokens_details.cached_tokens, Anthropic cache_read_input_tokens, Responses
     # input_tokens_details.cached_tokens). Mirrors sglang's --enable-cache-report.
@@ -142,6 +144,15 @@ def parse_args(
             raise argparse.ArgumentTypeError("must be a positive integer") from exc
         if n < 1:
             raise argparse.ArgumentTypeError("must be >= 1")
+        return n
+
+    def _non_negative_int(value: str) -> int:
+        try:
+            n = int(value)
+        except ValueError as exc:
+            raise argparse.ArgumentTypeError("must be a non-negative integer") from exc
+        if n < 0:
+            raise argparse.ArgumentTypeError("must be >= 0")
         return n
 
     def _lazy_gpu_arg(value: str) -> tuple[str, ...]:
@@ -281,6 +292,13 @@ def parse_args(
         dest="max_running_req",
         default=ServerArgs.max_running_req,
         help="The maximum number of running requests.",
+    )
+
+    parser.add_argument(
+        "--frontend-generation-limit",
+        type=_non_negative_int,
+        default=ServerArgs.frontend_generation_limit,
+        help="Maximum generations admitted to the backend at once; 0 disables the frontend limit.",
     )
 
     parser.add_argument(

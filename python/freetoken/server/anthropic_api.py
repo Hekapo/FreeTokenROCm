@@ -137,7 +137,9 @@ async def handle_anthropic_messages(
         return StreamingResponse(events, media_type="text/event-stream")
 
     try:
-        result = await generate_full(uid, spec, state, source="/v1/messages")
+        result = await state.await_with_cancellation(
+            generate_full(uid, spec, state, source="/v1/messages"), request, uid
+        )
     except GenerationError as exc:
         if is_engine_failure(exc.code):
             # the engine died under the request: a server fault the client may retry
