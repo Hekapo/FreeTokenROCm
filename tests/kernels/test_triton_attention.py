@@ -6,6 +6,58 @@ import pytest
 import torch
 
 
+def test_chunked_prefill_query_metadata_avoids_blocking_device_tensor(monkeypatch):
+    from freetoken.attention.triton import TritonAttentionBackend
+
+    device = torch.device("cuda")
+    page_table = torch.arange(64, dtype=torch.int32).view(2, 32)
+    ctx = SimpleNamespace(kv_cache=SimpleNamespace(device=device), page_table=page_table)
+    monkeypatch.setattr("freetoken.attention.triton.get_global_ctx", lambda: ctx)
+    original_empty, original_tensor = torch.empty, torch.tensor
+    events = []
+
+    def cpu_empty(*args, **kwargs):
+        kwargs.pop("pin_memory", None)
+        kwargs["device"] = "cpu"
+        return original_empty(*args, **kwargs)
+
+    def reject_blocking_device_tensor(*args, **kwargs):
+        requested = kwargs.get("device")
+        if requested is not None and torch.device(requested).type == "cuda":
+            raise AssertionError("blocking host-list to GPU tensor in chunked prefill")
+        return original_tensor(*args, **kwargs)
+
+    class CopyEvent:
+        def __init__(self):
+            self.waits = 0
+            events.append(self)
+
+        def synchronize(self):
+            self.waits += 1
+
+        def record(self, stream):
+            pass
+
+    monkeypatch.setattr(torch, "empty", cpu_empty)
+    monkeypatch.setattr(torch, "tensor", reject_blocking_device_tensor)
+    monkeypatch.setattr(torch.cuda, "Event", CopyEvent)
+    monkeypatch.setattr(torch.cuda, "current_stream", lambda device: None)
+    backend = TritonAttentionBackend(SimpleNamespace())
+    snapshots = []
+    for cached in (2, 4, 6):
+        batch = SimpleNamespace(padded_reqs=[
+            SimpleNamespace(extend_len=3, device_len=cached + 3, cached_len=cached, table_idx=0),
+            SimpleNamespace(extend_len=2, device_len=cached + 2, cached_len=cached, table_idx=1),
+        ], positions=torch.arange(5))
+        backend.prepare_metadata(batch)
+        metadata = batch.attn_metadata
+        assert metadata.cu_seqlens_q_gpu.tolist() == [0, 3, 5]
+        assert metadata.indptr.tolist() == [0, cached + 3, 2 * cached + 5]
+        snapshots.append(metadata.cu_seqlens_q_gpu.data_ptr())
+    assert snapshots[0] == snapshots[2] and snapshots[0] != snapshots[1]
+    assert [event.waits for event in events] == [1, 0]
+
+
 def _reference_paged_attention(
     q: torch.Tensor,
     k_cache: torch.Tensor,

@@ -102,6 +102,7 @@ class ShellClient:
     ) -> None:
         self.origin = origin.rstrip("/")
         self.context_length: int | None = None
+        self.model_context_length: int | None = None
         self.timeout = timeout
         self._openai = AsyncOpenAI(
             base_url=f"{self.origin}/v1",
@@ -212,7 +213,12 @@ class ShellClient:
             return None
         for item in data:
             if isinstance(item, dict) and isinstance(item.get("id"), str):
-                raw_context = item.get("context_length") or item.get("max_model_len")
+                raw_model_context = item.get("context_length") or item.get("max_model_len")
+                self.model_context_length = int(raw_model_context) if raw_model_context else None
+                raw_context = (
+                    item.get("effective_context_length")
+                    or raw_model_context
+                )
                 self.context_length = int(raw_context) if raw_context else None
                 return item["id"]
         return None

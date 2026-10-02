@@ -85,6 +85,8 @@ class _MetadataBuffers:
     device_prefix: torch.Tensor
     host_indptr: torch.Tensor
     device_indptr: torch.Tensor
+    host_query_indptr: torch.Tensor
+    device_query_indptr: torch.Tensor
     copy_done: torch.cuda.Event
 
 
@@ -237,6 +239,7 @@ class TritonAttentionBackend(BaseAttnBackend):
         cached_lens = [req.cached_len for req in reqs]
         num_query_tokens = sum(seqlens_q)
         is_decode = max(seqlens_q) == 1
+        cu_seqlens_q_gpu = None
         if device.type == "cuda":
             slot_index = self._metadata_buffer_index
             buffers = self._metadata_buffers[slot_index]
@@ -250,6 +253,8 @@ class TritonAttentionBackend(BaseAttnBackend):
                     device_prefix=torch.empty(capacity, dtype=torch.int32, device=device),
                     host_indptr=torch.empty(capacity, dtype=torch.int32, pin_memory=True),
                     device_indptr=torch.empty(capacity, dtype=torch.int32, device=device),
+                    host_query_indptr=torch.empty(capacity, dtype=torch.int32, pin_memory=True),
+                    device_query_indptr=torch.empty(capacity, dtype=torch.int32, device=device),
                     copy_done=torch.cuda.Event(),
                 )
                 self._metadata_buffers[slot_index] = buffers
@@ -266,6 +271,21 @@ class TritonAttentionBackend(BaseAttnBackend):
             indptr = buffers.device_indptr[: padded_size + 1]
             prefix_lens.copy_(buffers.host_prefix[:padded_size], non_blocking=True)
             indptr.copy_(buffers.host_indptr[: padded_size + 1], non_blocking=True)
+            if not is_decode and any(cached_lens):
+                # Chunked prefill needs query offsets separate from KV offsets.
+                # Build them on the host and use the same fenced pinned buffers
+                # as the other metadata. torch.tensor(host_list, device="cuda")
+                # inserts a blocking transfer on the overlapped scheduler stream.
+                buffers.host_query_indptr[0] = 0
+                torch.cumsum(
+                    torch.tensor(seqlens_q, dtype=torch.int32),
+                    dim=0,
+                    out=buffers.host_query_indptr[1 : padded_size + 1],
+                )
+                cu_seqlens_q_gpu = buffers.device_query_indptr[: padded_size + 1]
+                cu_seqlens_q_gpu.copy_(
+                    buffers.host_query_indptr[: padded_size + 1], non_blocking=True
+                )
             buffers.copy_done.record(torch.cuda.current_stream(device))
             self._metadata_buffer_index = 1 - slot_index
         else:
@@ -275,7 +295,7 @@ class TritonAttentionBackend(BaseAttnBackend):
             cu_seqlens_q_gpu = torch.arange(0, padded_size + 1, device=device, dtype=torch.int32)
         elif all(l == 0 for l in cached_lens):
             cu_seqlens_q_gpu = indptr
-        else:
+        elif cu_seqlens_q_gpu is None:
             cu_seqlens_q_gpu = torch.tensor(
                 [0] + seqlens_q, dtype=torch.int32, device=device
             ).cumsum_(0)

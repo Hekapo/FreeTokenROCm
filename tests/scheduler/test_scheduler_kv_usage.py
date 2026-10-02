@@ -2,8 +2,11 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
+import pytest
 
-def test_prompt_and_output_fit_effective_kv_limit():
+
+@pytest.mark.parametrize("capacity", [8192, 65536])
+def test_prompt_and_output_fit_effective_kv_limit(capacity):
     import torch
 
     from freetoken.core import SamplingParams
@@ -13,13 +16,13 @@ def test_prompt_and_output_fit_effective_kv_limit():
     admitted = []
     errors = []
     scheduler = SimpleNamespace(
-        engine=SimpleNamespace(max_seq_len=8192),
+        engine=SimpleNamespace(max_seq_len=capacity),
         prefill_manager=SimpleNamespace(add_one_req=admitted.append),
         send_result=errors.extend,
     )
     too_long = UserMsg(
         uid=1,
-        input_ids=torch.zeros(8192, dtype=torch.int32),
+        input_ids=torch.zeros(capacity, dtype=torch.int32),
         sampling_params=SamplingParams(max_tokens=1),
     )
     Scheduler._process_one_msg(scheduler, too_long)
@@ -29,12 +32,44 @@ def test_prompt_and_output_fit_effective_kv_limit():
 
     fits_after_clamp = UserMsg(
         uid=2,
-        input_ids=torch.zeros(6144, dtype=torch.int32),
+        input_ids=torch.zeros(capacity - 2048, dtype=torch.int32),
         sampling_params=SamplingParams(max_tokens=4096),
     )
     Scheduler._process_one_msg(scheduler, fits_after_clamp)
     assert admitted == [fits_after_clamp]
     assert fits_after_clamp.sampling_params.max_tokens == 2048
+
+
+@pytest.mark.parametrize("prompt, requested, expected", [
+    (63488, 2048, 2048),
+    (65280, 256, 256),
+    (65535, 2048, 1),
+    (65536, 1, None),
+    (65537, 1, None),
+])
+def test_64k_boundary_is_checked_before_prefill(prompt, requested, expected):
+    import torch
+
+    from freetoken.core import SamplingParams
+    from freetoken.message import UserMsg
+    from freetoken.scheduler.scheduler import Scheduler
+
+    admitted, errors = [], []
+    scheduler = SimpleNamespace(
+        engine=SimpleNamespace(max_seq_len=65536),
+        prefill_manager=SimpleNamespace(add_one_req=admitted.append),
+        send_result=errors.extend,
+    )
+    msg = UserMsg(uid=1, input_ids=torch.zeros(prompt, dtype=torch.int32),
+                  sampling_params=SamplingParams(max_tokens=requested))
+    Scheduler._process_one_msg(scheduler, msg)
+    if expected is None:
+        assert admitted == []
+        assert len(errors) == 1 and errors[0].code == "context_length_exceeded"
+    else:
+        assert errors == [] and admitted == [msg]
+        assert msg.sampling_params.max_tokens == expected
+        assert prompt + expected <= 65536
 
 
 def test_kv_usage_pages_excludes_evictable_prefix_cache():

@@ -114,3 +114,11 @@ class ErrorReplyMsg(BaseTokenizerMsg):
     # can react without parsing prose. Today only "context_length_exceeded" (prompt longer than
     # the servable context); None = no specific class, the message is all there is.
     code: str | None = None
+    # Abort acknowledgements carry the post-drain pool snapshot so a terminal
+    # error updates frontend occupancy even when no further tokens are sampled.
+    kv_used_pages: int = 0
+    kv_total_pages: int = 0
+    mamba_used_slots: int = 0
+    mamba_total_slots: int = 0
+    swa_used_tokens: int = 0
+    swa_total_tokens: int = 0

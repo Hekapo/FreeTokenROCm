@@ -526,19 +526,25 @@ def test_models_route_publishes_the_model_context_length():
     assert card["context_length"] == 262144
 
 
-def test_models_route_publishes_allocated_kv_limit():
+@pytest.mark.parametrize("context, kv_tokens, effective", [
+    (8192, 6144, 6144),
+    (65536, 65536, 65536),
+    (65536, 8192, 8192),
+    (262144, 65536, 65536),
+])
+def test_models_route_publishes_allocated_kv_limit(context, kv_tokens, effective):
     state = FakeState([])
-    state.config.max_seq_len = 8192
+    state.config.max_seq_len = context
     state.config.page_size = 1
     state.config.max_output_tokens = 2048
-    state.stats = SimpleNamespace(kv_total_pages=6144)
+    state.stats = SimpleNamespace(kv_total_pages=kv_tokens)
     app = FastAPI()
     register_openai_routes(app, lambda: state, lambda: {})
 
     card = TestClient(app).get("/v1/models").json()["data"][0]
 
-    assert card["context_length"] == 8192
-    assert card["effective_context_length"] == 6144
+    assert card["context_length"] == context
+    assert card["effective_context_length"] == effective
     assert card["default_max_output_tokens"] == 2048
 
 

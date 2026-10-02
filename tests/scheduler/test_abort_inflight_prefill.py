@@ -127,6 +127,60 @@ def test_abort_inflight_final_chunk_marks_then_drains():
     cm.check_integrity()
 
 
+@pytest.mark.parametrize("phase", ["prefill", "decode"])
+def test_abort_terminal_updates_frontend_kv_after_gpu_drain(phase):
+    from freetoken.message import UserReply
+    from freetoken.server.stats import StatsTracker
+    from freetoken.tokenizer.server import _error_reply
+
+    pool, cm, tm, dm, _pm, sent, stub = _setup()
+    req = _launch_req(pool, cm, tm, torch.arange(1, 13, dtype=torch.int32))
+    batch = Batch(reqs=[req], phase=phase)
+    dm.filter_reqs(batch.reqs)
+    stub._last_data = _as_last_data(batch)
+    stats = StatsTracker()
+    stats.on_new_user(UID)
+    used, total = cm.page_usage()
+    assert used > 0
+    stats.observe(UserReply(uid=UID, incremental_output="x", finished=False,
+                            kv_used_pages=used, kv_total_pages=total))
+    stats.on_abort(UID)
+
+    Scheduler._process_one_msg(stub, AbortBackendMsg(uid=UID))
+    assert sent == [] and cm.page_usage()[0] > 0
+    Scheduler._process_last_data(stub, stub._last_data)
+    Scheduler._flush_abort_acks(stub)
+    assert cm.page_usage()[0] == 0
+    assert len(sent) == 1
+    stats.observe(_error_reply(sent[0]))
+    assert stats.active == 0 and stats.completed == 0
+    assert stats.kv_used_pages == 0
+    assert stats.kv_total_pages == total
+
+
+def test_abort_snapshot_preserves_other_requests_pool_usage():
+    from freetoken.message import ErrorReplyMsg
+    from freetoken.server.stats import StatsTracker
+    from freetoken.tokenizer.server import _error_reply
+
+    sent = []
+    stub = SimpleNamespace(_pending_abort_acks={UID}, send_result=sent.extend,
+                           _kv_usage_pages=lambda: (500, 65536),
+                           _mamba_slot_usage=lambda: (2, 8),
+                           _swa_token_usage=lambda: (24, 128))
+    Scheduler._flush_abort_acks(stub)
+    stats = StatsTracker()
+    stats.on_new_user(UID)
+    stats.on_new_user(UID + 1)
+    stats.on_abort(UID)
+    wire_reply = ErrorReplyMsg.decoder(ErrorReplyMsg.encoder(sent[0]))
+    stats.observe(_error_reply(wire_reply))
+    assert stats.active == 1
+    assert (stats.kv_used_pages, stats.kv_total_pages) == (500, 65536)
+    assert (stats.mamba_used_slots, stats.mamba_total_slots) == (2, 8)
+    assert (stats.swa_used_tokens, stats.swa_total_tokens) == (24, 128)
+
+
 def test_abort_inflight_intermediate_chunk_marks_then_drains():
     """Abort mid-chunked-prefill: prefill_manager.abort_req pops the pending continuation
     (no next chunk launches) and returns the in-flight ChunkedReq, which is marked and

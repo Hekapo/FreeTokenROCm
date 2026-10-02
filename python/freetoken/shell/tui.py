@@ -601,10 +601,11 @@ async def _run_shell(client: ShellClient, origin: str, *, connect_grace: float) 
     stats = ShellStats(model_label=_format_shell_model_label(model_id), think_gear=think_gear)
     stats.apply_geometry(geometry)
     stats.apply_stats_doc(stats_doc)
-    configured_context = getattr(client, "context_length", None) or 0
+    effective_context = getattr(client, "context_length", None) or 0
+    configured_context = getattr(client, "model_context_length", None) or effective_context
     stats.model_context_limit = configured_context
     kv_context = stats.kv_total_pages * stats.page_size
-    stats.context_limit = min(configured_context, kv_context) if kv_context else configured_context
+    stats.context_limit = min(configured_context, kv_context) if kv_context else effective_context
 
     write(f"FreeToken shell -> {model_id} @ {origin}  (/help for commands, /exit to quit)\n")
     if stats.context_limit:

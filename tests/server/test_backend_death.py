@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import io
 import json
 import threading
 from types import SimpleNamespace
@@ -15,6 +16,42 @@ from freetoken.server.api_server import FrontendManager
 from freetoken.server.generation import ENGINE_UNAVAILABLE
 from freetoken.server.openai_api import _generation_error_response
 from freetoken.server.responses_api import _error_response
+
+
+def test_scheduler_stack_monitor_captures_waiting_thread_and_stops():
+    from freetoken.server.launch import _start_scheduler_stack_monitor
+
+    captured = threading.Event()
+    release = threading.Event()
+
+    class Output(io.StringIO):
+        def flush(self):
+            captured.set()
+
+    def blocked_worker():
+        release.wait()
+
+    worker = threading.Thread(target=blocked_worker)
+    worker.start()
+    output = Output()
+    stop = _start_scheduler_stack_monitor(0.01, output)
+    try:
+        assert captured.wait(2), "stack monitor did not capture a waiting worker"
+        stop()
+        assert "blocked_worker" in output.getvalue()
+        assert not any(t.name == "scheduler-stack-monitor" for t in threading.enumerate())
+    finally:
+        stop()
+        release.set()
+        worker.join(timeout=2)
+
+
+@pytest.mark.parametrize("interval", [0, -1, float("inf"), float("nan")])
+def test_scheduler_stack_monitor_rejects_invalid_interval(interval):
+    from freetoken.server.launch import _start_scheduler_stack_monitor
+
+    with pytest.raises(ValueError, match="finite and positive"):
+        _start_scheduler_stack_monitor(interval)
 
 
 def _manager() -> FrontendManager:

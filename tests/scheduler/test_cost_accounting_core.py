@@ -48,6 +48,11 @@ def _tokenize_msg(uid: int) -> TokenizeMsg:
     return TokenizeMsg(uid=uid, text="hello", sampling_params=SamplingParams(max_tokens=2))
 
 
+def _empty_cache(scheduler):
+    scheduler.cache_manager = SimpleNamespace(page_usage=lambda: (0, 65536),
+                                              is_hybrid=False, swa_paged=False)
+
+
 def test_successful_tokenization_does_not_account_prompt_before_admission():
     class Tokenizer:
         def tokenize(self, messages):
@@ -152,6 +157,7 @@ def test_scheduler_rejection_emits_error_but_no_admission():
 
 def test_scheduler_always_emits_terminal_abort_ack_for_unknown_uid():
     scheduler = Scheduler.__new__(Scheduler)
+    _empty_cache(scheduler)
     scheduler.prefill_manager = SimpleNamespace(abort_req=lambda uid: None)
     scheduler.decode_manager = SimpleNamespace(abort_req=lambda uid: None)
     scheduler._pending_abort_acks = set()
@@ -168,6 +174,7 @@ def test_scheduler_always_emits_terminal_abort_ack_for_unknown_uid():
 
 def test_abort_before_cross_worker_user_message_cannot_resurrect_request():
     scheduler = Scheduler.__new__(Scheduler)
+    _empty_cache(scheduler)
     scheduler.engine = SimpleNamespace(max_seq_len=64)
     added = []
     scheduler.prefill_manager = SimpleNamespace(
@@ -199,6 +206,7 @@ def test_abort_before_cross_worker_user_message_cannot_resurrect_request():
 
 def test_normal_loop_sends_prior_sample_before_abort_terminal():
     scheduler = Scheduler.__new__(Scheduler)
+    _empty_cache(scheduler)
     scheduler.prefill_manager = SimpleNamespace(runnable=False, abort_req=lambda uid: None)
     scheduler.decode_manager = SimpleNamespace(runnable=False, abort_req=lambda uid: None)
     scheduler._pending_abort_acks = set()

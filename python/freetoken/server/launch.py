@@ -5,6 +5,8 @@ import logging
 import multiprocessing as mp
 import os
 import sys
+import threading
+import traceback
 from dataclasses import replace
 from typing import TYPE_CHECKING
 
@@ -14,6 +16,49 @@ from freetoken.utils import init_logger
 if TYPE_CHECKING:
     from .args import ServerArgs
     from .supervisor import BackendHandle
+
+
+def _start_scheduler_stack_monitor(interval_s: float, output=None):
+    """Capture Python frames with the GIL held, instead of an asynchronous C dump.
+
+    CPython's native faulthandler watchdog can race freed frames on older Python
+    builds. A Python thread obtains strong frame references under the GIL; it can
+    still observe a scheduler waiting in a native call that releases the GIL.
+    """
+    import math
+
+    if not math.isfinite(interval_s) or interval_s <= 0:
+        raise ValueError("scheduler stack interval must be finite and positive")
+    output = sys.stderr if output is None else output
+    stopped = threading.Event()
+
+    def monitor():
+        while not stopped.wait(interval_s):
+            try:
+                frames = sys._current_frames()
+                try:
+                    output.write("Scheduler stack snapshot:\n")
+                    for ident, frame in frames.items():
+                        output.write(f"Thread {ident}:\n")
+                        traceback.print_stack(frame, file=output)
+                    output.flush()
+                finally:
+                    # Frame references can retain scheduler tensors and form a cycle
+                    # through this monitor's own frame. Drop them before waiting.
+                    frames.clear()
+                    frame = None
+            except Exception as exc:
+                init_logger(__name__).warning("Scheduler stack monitor stopped: %s", exc)
+                return
+
+    thread = threading.Thread(target=monitor, name="scheduler-stack-monitor", daemon=True)
+    thread.start()
+
+    def stop():
+        stopped.set()
+        thread.join(timeout=2)
+
+    return stop
 
 
 def _configure_windows_asyncio_policy(platform_name: str | None = None) -> bool:
@@ -152,12 +197,9 @@ def _run_scheduler(args: ServerArgs, ack_queue: mp.Queue[str]) -> None:
             logging.disable(logging.INFO)
 
         stack_interval = os.environ.get("FT_DIAG_SCHED_STACK_INTERVAL_S")
+        stop_stack_monitor = None
         if stack_interval and args.tp_info.is_primary():
-            import faulthandler
-
-            faulthandler.dump_traceback_later(
-                float(stack_interval), repeat=True, file=sys.stderr,
-            )
+            stop_stack_monitor = _start_scheduler_stack_monitor(float(stack_interval))
         try:
             scheduler.run_forever()
         except KeyboardInterrupt:
@@ -175,8 +217,8 @@ def _run_scheduler(args: ServerArgs, ack_queue: mp.Queue[str]) -> None:
             _drain_device_before_exit()
             raise
         finally:
-            if stack_interval and args.tp_info.is_primary():
-                faulthandler.cancel_dump_traceback_later()
+            if stop_stack_monitor is not None:
+                stop_stack_monitor()
 
 
 def launch_server(

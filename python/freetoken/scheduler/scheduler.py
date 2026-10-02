@@ -814,8 +814,17 @@ class Scheduler(SchedulerIOMixin):
         if not pending:
             return
         uids = sorted(pending)
+        used, total = self._kv_usage_pages()
+        mamba_used, mamba_total = self._mamba_slot_usage() or (0, 0)
+        swa_used, swa_total = self._swa_token_usage() or (0, 0)
         pending.clear()
-        self.send_result([ErrorReplyMsg(uid=uid, error="request aborted") for uid in uids])
+        self.send_result([
+            ErrorReplyMsg(uid=uid, error="request aborted", kv_used_pages=used,
+                          kv_total_pages=total, mamba_used_slots=mamba_used,
+                          mamba_total_slots=mamba_total, swa_used_tokens=swa_used,
+                          swa_total_tokens=swa_total)
+            for uid in uids
+        ])
 
     def _forward(self, forward_input: ForwardInput) -> ForwardOutput:
         batch, sample_args, input_mapping, output_mapping = forward_input

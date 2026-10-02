@@ -8,6 +8,94 @@ from freetoken.shell import tui
 from freetoken.shell.client import ContentDelta, ReasoningDelta, TurnDone
 
 
+@pytest.mark.parametrize("has_initial_stats", [False, True])
+def test_shell_context_budget_tracks_resized_kv_within_model_ceiling(monkeypatch, has_initial_stats):
+    from freetoken.shell.client import ShellClient
+
+    client = ShellClient.__new__(ShellClient)
+
+    async def metadata(*args):
+        return {"data": [{"id": "unit-model", "context_length": 65536,
+                          "effective_context_length": 8192}]}
+
+    async def ready(**kwargs):
+        return {"status": "ok"}
+
+    async def cache_status():
+        return {"geometry": {}}
+
+    async def initial_stats():
+        return {"kv": {"used_pages": 0, "total_pages": 8192, "page_size": 1}} if has_initial_stats else {}
+
+    client._request_json = metadata
+    client.wait_until_ready = ready
+    client.cache_status = cache_status
+    client.stats = initial_stats
+    captured = []
+    stats_type = tui.ShellStats
+
+    def capture_stats(**kwargs):
+        stats = stats_type(**kwargs)
+        captured.append(stats)
+        return stats
+
+    class Renderer:
+        _write_stdout = staticmethod(lambda text: None)
+
+        def __init__(self, **kwargs):
+            pass
+
+    class StatusLine:
+        write_output = staticmethod(lambda text: None)
+
+        def __init__(self, *args, **kwargs):
+            pass
+
+    class Session:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        async def prompt_async(self):
+            stats = captured[0]
+            assert stats.context_limit == 8192
+            for capacity, expected in [(65536, 65536), (4096, 4096), (131072, 65536)]:
+                stats.apply_stats_doc({"kv": {"used_pages": 0, "total_pages": capacity,
+                                              "page_size": 1}})
+                assert stats.context_limit == expected
+                stats.prompt_tokens, stats.completion_tokens = 3072, 1024
+                assert f"ctx {expected} remaining {expected - 4096}" in stats.format()
+            raise EOFError
+
+    monkeypatch.setattr(tui, "ShellStats", capture_stats)
+    monkeypatch.setattr(tui, "ShellConsoleRenderer", Renderer)
+    monkeypatch.setattr(tui, "ShellStatusLine", StatusLine)
+    monkeypatch.setattr(tui, "PromptSession", Session)
+    assert asyncio.run(tui._run_shell(client, "http://127.0.0.1:1919", connect_grace=0)) == 0
+
+
+@pytest.mark.parametrize("card, effective, configured", [
+    ({"context_length": 65536, "effective_context_length": 8192}, 8192, 65536),
+    ({"context_length": 262144, "effective_context_length": 65536}, 65536, 262144),
+    ({"max_model_len": 65536, "effective_context_length": 8192}, 8192, 65536),
+    ({"context_length": 65536}, 65536, 65536),
+    ({"max_model_len": 4096}, 4096, 4096),
+    ({"effective_context_length": 8192}, 8192, None),
+    ({}, None, None),
+])
+def test_shell_reads_allocated_context_budget(card, effective, configured):
+    from freetoken.shell.client import ShellClient
+
+    client = ShellClient.__new__(ShellClient)
+
+    async def metadata(*args):
+        return {"data": [{"id": "unit-model", **card}]}
+
+    client._request_json = metadata
+    assert asyncio.run(client.model_id()) == "unit-model"
+    assert client.context_length == effective
+    assert client.model_context_length == configured
+
+
 @pytest.mark.parametrize("first_answer", ["", "   ", "Partial answer"])
 def test_limited_turn_can_be_retried_with_new_limit_and_thinking_off(monkeypatch, first_answer):
     output = []
