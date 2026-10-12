@@ -5,6 +5,9 @@ Windows. It is not a release wheel or a claim that every Windows configuration
 works. The local ROCm 10 environment passed GPU sanity and targeted tests; a
 fresh install using the commands below has not been run end to end.
 
+For the qualified 64K Qwen3.6 service, use the
+[repository launcher and local configuration](run-windows-rocm64k.md).
+
 ## Compatibility first
 
 The [ROCm 10 compatibility matrix](https://rocm.docs.amd.com/en/latest/compatibility/compatibility-matrix.html)

@@ -234,3 +234,6 @@ benchmarks/cross_framework
 
 # local e2e/bench artifacts (harnesses may run with repo cwd)
 /results/
+
+# Local settings, managed service state and caches for the Windows 64K launcher
+/.local/windows-rocm64k/

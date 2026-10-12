@@ -1,0 +1,115 @@
+{
+  "schema": 3,
+  "mode": "repository-64k-20261012",
+  "profile": "64k",
+  "capacity": 65536,
+  "kv_capacity": 65536,
+  "max_running_requests": 1,
+  "cache_stable_triton_knob": true,
+  "user_policy": "reuse verified stages; no repeated full qualification",
+  "accepted_engine_commit": "d315247d8abc2ce4340354f0abe77374296258ad",
+  "historical_release_sha256": "a6fb78da8f25d0beb8ee057415aac34f53b856cb7bad7b7ee7af70091a3289db",
+  "repository_launcher_model_smoke_performed": false,
+  "runtime_hashes": [
+    {
+      "path": "service64k.ps1",
+      "sha256": "3bef6f601c446333f37b1e10bef92fd92796d15dc1adbdca46e3f1f3f78c9aaf"
+    },
+    {
+      "path": "service64k_lifecycle.ps1",
+      "sha256": "0800385740342e5a858d5f7f3b490436ba51f9db913d6d7240d3842013d16986"
+    },
+    {
+      "path": "service64k_paths.ps1",
+      "sha256": "c3ee01581b9b6f8e7542e45861aa5cdd10bc40b86583ab762bbe05ccd735fff4"
+    },
+    {
+      "path": "service64k_release.ps1",
+      "sha256": "9919c786bd65380b8fe68b0f83aa3447121991a840c572ab7b1f252e7a3a30e1"
+    },
+    {
+      "path": "launch64k.ps1",
+      "sha256": "7e0437143dfb8f961af35cbe11e6567faa2ee3e220b311e6d2d9fda1a986d79e"
+    },
+    {
+      "path": "service38_safety.ps1",
+      "sha256": "e2b5620ea8b206f5e3b70a6690acea9c2816e2f268f0256f0d1d3dab86ee42c1"
+    },
+    {
+      "path": "service38_probes.ps1",
+      "sha256": "51d42a24f32a8751438ec077249c33817cdc32cdbf4e4a9900c8b2d4d3f54adf"
+    },
+    {
+      "path": "service38_probe_native.cs",
+      "sha256": "f05c52644b6b363c994f16571fed874e1d0a73e19d224a28c7f2441db88a9111"
+    },
+    {
+      "path": "service38_gpu_identity.cs",
+      "sha256": "a4ba83ea54be1140628b7f96fe6d0c0009a08d4bf17f5b6aa8534ab371c1eedf"
+    },
+    {
+      "path": "query_service38.ps1",
+      "sha256": "eb7f75d4b9eb52be454a7f93437d019bd68892e9e809c852ab05d29eacc7827e"
+    },
+    {
+      "path": "observe_service38.ps1",
+      "sha256": "ec01b870396e2517175e11faf9191807e24207fe33abf09d47b18960911d58c7"
+    },
+    {
+      "path": "stable_triton_knob.py",
+      "sha256": "58cc3684ea1238aca956dc8abf933b1afe0b95c2aab05afed9667c71ac2a4b8e"
+    },
+    {
+      "path": "cached_stats_launcher.py",
+      "sha256": "56528fc9439775e7b9bf9d7cfb25a8c041e0043530811e7c51cec5c5418a8a54"
+    },
+    {
+      "path": "reviewed_source.py",
+      "sha256": "fa864007e7b5ed80f42b67416caa32dcbc017de946832c7b5655c46cd944224e"
+    },
+    {
+      "path": "accepted-source.json",
+      "sha256": "632dc5978946054d67dca5e40249234ccb443ca7cf40e99617704652d461f352"
+    },
+    {
+      "path": "profile.json",
+      "sha256": "806e8d0718cb8e1a405dd1af8fb9b73c66814dd59680d737c403f1ac95d1ac84"
+    },
+    {
+      "path": "quarantine-history.json",
+      "sha256": "24a46ae2dbb09754dc3be67f84eff311b71984a88c3db445a12d6270bb2be3eb"
+    }
+  ],
+  "evidence_hashes": [
+    {
+      "kind": "capacity",
+      "path": "evidence/capacity.json",
+      "sha256": "2e2f5f2cb9d74cad43436631f7088c33cd7517b2ea37670f0c44b138a7edc559"
+    },
+    {
+      "kind": "source",
+      "path": "evidence/source.json",
+      "sha256": "890c62a2545de6c6a10bdcafcc4522dcaa37bcebaf087ed9fcc62920134dd0c2"
+    },
+    {
+      "kind": "verification",
+      "path": "evidence/verification.json",
+      "sha256": "d6eb3b0497fffe0e3d8ab8a1cecf4178e7fc6296651c30ee425c4f659bde38bb"
+    },
+    {
+      "kind": "long",
+      "path": "evidence/long.json",
+      "sha256": "6ecb8bf65d5e182661a91b2079ef0c378238e1bc152acb6020097dd49c82ece2"
+    },
+    {
+      "kind": "long-stop",
+      "path": "evidence/long-stop.json",
+      "sha256": "57d41e4e6b90873855809f14acfc2fc62338ad987712ac220dbe475512b05f56"
+    },
+    {
+      "kind": "ordinary",
+      "path": "evidence/ordinary.json",
+      "sha256": "12ff9008e99ca2220947f1ed144883368d590062d6006fc3540808f2184e7063"
+    }
+  ]
+}

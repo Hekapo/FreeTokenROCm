@@ -1,0 +1,39 @@
+{
+  "schema": 1,
+  "profile": "64k",
+  "model": "qwen3.6-35b-a3b-q4_1",
+  "model_filename": "Qwen_Qwen3.6-35B-A3B-Q4_1.gguf",
+  "port": 1919,
+  "context_capacity": 65536,
+  "kv_capacity": 65536,
+  "max_running_requests": 1,
+  "frontend_generation_limit": 1,
+  "default_max_output_tokens": 2048,
+  "logit_check_every": 64,
+  "prefill_overlap": true,
+  "source_knob_enabled": false,
+  "moe_prefill_demand_tokens": 0,
+  "cache_stable_triton_knob": true,
+  "amd_buffer_ops": true,
+  "arch": "gfx1201",
+  "gpu_vendor_id": 4098,
+  "gpu_device_id": 30032,
+  "gpu_total_gib": 16,
+  "msvc_version": "14.44.35207",
+  "windows_sdk_version": "10.0.26100.0",
+  "startup": {
+    "free_physical_gib": 38,
+    "free_commit_gib": 45,
+    "gpu_local_free_gib": 14
+  },
+  "runtime": {
+    "free_physical_gib": 12,
+    "free_commit_gib": 4,
+    "gpu_local_free_gib": 3
+  },
+  "recovery": {
+    "free_physical_gib": 38,
+    "free_commit_gib": 28,
+    "gpu_local_free_gib": 14
+  }
+}

@@ -1,0 +1,40 @@
+{
+  "stage": 8,
+  "branch": "integration/research-refresh-20261002",
+  "head": "e5e2899eef36e55eb84a58a4cd59de8766ac8c46",
+  "main_clean": true,
+  "existing_files_preserved": 70,
+  "accepted_code_files_byte_identical_to_model_runs": 476,
+  "stage2_numerical_files_unchanged": 14,
+  "candidate_package_versions": 74,
+  "control_package_versions_unchanged": 73,
+  "control_files_unchanged": 33718,
+  "candidate_native_files_match_control": 21790,
+  "requests_passed": 9,
+  "model_stopped": true,
+  "legacy_release_marker_promoted": false,
+  "frozen_lab_files_verified": 17,
+  "launcher_gate_checks_passed": 19,
+  "document_links_verified": 49,
+  "git_diff_check": true,
+  "committed": false,
+  "pushed": false,
+  "docs_changes": [
+    "constraints/README.md",
+    "constraints/windows-rocm1000-profile-20261012.json",
+    "docs/integration-research-stage8-20261012.md",
+    "docs/research-integration-plan-20261012.md"
+  ],
+  "lab_changes": [
+    "run_ctx64k_short_diagnostic.ps1",
+    "run_soak_triton38.ps1",
+    "service38_control.ps1",
+    "service38_diagnostic_plan.ps1"
+  ],
+  "after_docs_sha256": {
+    "constraints/README.md": "f0ecf87d086503dcc4f20a5a1c928e14346e52c77439e686f3a3b06842544191",
+    "constraints/windows-rocm1000-profile-20261012.json": "e5444705c0afed891c765b8d61ea3e0708a16a28f20d79d9b775ac4dd938ae8b",
+    "docs/integration-research-stage8-20261012.md": "d330e0b4918336c6a71c2977d00f85fa0bc2e5f144ad5cbb4add9194b9052cbf",
+    "docs/research-integration-plan-20261012.md": "2433087f138ed82cf0610692e8d0d6f1890a87b794463a6caf9a4248f2484938"
+  }
+}

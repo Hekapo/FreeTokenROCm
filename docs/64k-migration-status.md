@@ -1,5 +1,9 @@
 # 64K migration checkpoint - 2026-10-02
 
+Current ordinary launch instructions: [managed Windows 64K service](run-windows-rocm64k.md).
+The checkpoint below retains its historical scope; later integration evidence
+is recorded in the [2026-10-12 report](integration-research-stage8-20261012.md).
+
 This document records the source checkpoint merged from `64K-Migration` into
 the project's `main` branch in `Hekapo/FreeTokenROCm`. The merge preserves work;
 it does not qualify a new model runtime or enable the quarantined accelerated
