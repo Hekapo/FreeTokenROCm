@@ -1,0 +1,199 @@
+{
+  "schema": 1,
+  "date": "2026-10-12",
+  "scope": "Windows RX9070XT/gfx1201 Qwen3.6 GGUF Q4_1",
+  "source": {
+    "branch": "integration/research-refresh-20261002",
+    "head": "e5e2899eef36e55eb84a58a4cd59de8766ac8c46",
+    "materialization": "HEAD plus recorded uncommitted working-tree changes",
+    "model_gate_state_sha256": "2d2f5d7f89c93cfd8c345a04b1422837540c308d0f3252fe501bf4d176597a74",
+    "code_file_count": 476
+  },
+  "environment": {
+    "venv_root": "C:\\Users\\Iskandar\\FreeTokenROCm\\.venvs\\freetoken-pydeps-20261012-py312",
+    "python_version": "3.12.0",
+    "constraints": "windows-rocm1000-pydeps-20261012.txt",
+    "packages": {
+      "amd-torch-device-gfx1201": "2.13.0+rocm10.0.0",
+      "amd-torch-device-gfx12-0": "2.13.0+rocm10.0.0",
+      "annotated-doc": "0.0.5",
+      "annotated-types": "0.8.0",
+      "anyio": "4.14.2",
+      "apache-tvm-ffi": "0.1.13.post3",
+      "certifi": "2026.7.22",
+      "charset-normalizer": "3.5.1",
+      "click": "8.5.0",
+      "colorama": "0.4.6",
+      "distro": "1.9.0",
+      "einops": "0.8.2",
+      "fastapi": "0.143.0",
+      "filelock": "3.32.4",
+      "flashlib": "0.3.0",
+      "fsspec": "2026.7.0",
+      "gguf": "0.19.0",
+      "h11": "0.16.0",
+      "hf-xet": "1.6.0",
+      "httpcore": "1.0.9",
+      "httpx": "0.28.1",
+      "huggingface-hub": "1.33.0",
+      "idna": "3.19",
+      "iniconfig": "2.3.0",
+      "jinja2": "3.1.6",
+      "jiter": "0.16.0",
+      "llvmlite": "0.49.0",
+      "markdown-it-py": "4.2.0",
+      "markupsafe": "3.0.3",
+      "mdurl": "0.1.2",
+      "mpmath": "1.3.0",
+      "msgpack": "1.2.2",
+      "networkx": "3.6.1",
+      "numba": "0.67.0",
+      "numpy": "2.4.6",
+      "openai": "2.54.0",
+      "opentelemetry-api": "1.44.0",
+      "packaging": "26.3",
+      "partial-json-parser": "0.2.1.1.post7",
+      "pip": "23.2.1",
+      "pluggy": "1.6.0",
+      "prompt-toolkit": "3.0.53",
+      "pydantic": "2.14.1",
+      "pydantic-core": "2.50.1",
+      "pygments": "2.21.0",
+      "pytest": "9.1.1",
+      "pyyaml": "6.0.3",
+      "pyzmq": "27.2.0",
+      "regex": "2026.8.31",
+      "requests": "2.34.2",
+      "rich": "15.0.0",
+      "rocm": "10.0.0",
+      "rocm-bootstrap": "0.1.0",
+      "rocm-sdk-core": "10.0.0",
+      "rocm-sdk-devel": "10.0.0",
+      "rocm-sdk-device-gfx1201": "10.0.0",
+      "rocm-sdk-libraries": "10.0.0",
+      "safetensors": "0.8.0",
+      "setuptools": "84.0.0",
+      "shellingham": "1.5.4",
+      "sniffio": "1.3.1",
+      "starlette": "1.6.0",
+      "sympy": "1.14.0",
+      "tokenizers": "0.23.1",
+      "torch": "2.13.0+rocm10.0.0",
+      "tqdm": "4.70.0",
+      "transformers": "5.19.0",
+      "triton-windows": "3.8.0.post28",
+      "typer": "0.27.2",
+      "typing-extensions": "4.16.0",
+      "typing-inspection": "0.4.4",
+      "urllib3": "2.7.0",
+      "uvicorn": "0.52.4",
+      "wcwidth": "0.9.1"
+    },
+    "hardware": {
+      "cpu": [
+        {
+          "Name": "AMD Ryzen 7 9700X 8-Core Processor             ",
+          "NumberOfCores": 8,
+          "NumberOfLogicalProcessors": 16
+        }
+      ],
+      "os": {
+        "Caption": "\u041c\u0430\u0439\u043a\u0440\u043e\u0441\u043e\u0444\u0442 Windows 11 Pro",
+        "Version": "10.0.26100",
+        "BuildNumber": "26100",
+        "TotalVisibleMemorySize": 66703088
+      },
+      "gpu": [
+        {
+          "Name": "AMD Radeon RX 9070 XT",
+          "DriverVersion": "32.0.31041.1004"
+        }
+      ]
+    }
+  },
+  "model": {
+    "path": "C:/models/Qwen_Qwen3.6-35B-A3B-Q4_1.gguf",
+    "name": "qwen3.6-35b-a3b-q4_1"
+  },
+  "server": {
+    "max_seq_len_override": 65536,
+    "num_tokens": 65536,
+    "page_size": 1,
+    "dtype": "bfloat16",
+    "gdn_state_dtype": "float32",
+    "max_prefill_length": 512,
+    "moe_backend": "offload",
+    "moe_cache_size": 2048,
+    "moe_cache_policy": "lru",
+    "expert_load": "serial",
+    "max_running_requests": 1,
+    "frontend_generation_limit": 1,
+    "cuda_graph_max_bs": 0,
+    "cache_type": "naive",
+    "attention_backend": "triton",
+    "memory_ratio": 0.8,
+    "sampling_defaults": "none",
+    "max_output_tokens": 2048,
+    "prefill_overlap": true,
+    "moe_prefill_demand_tokens": 0
+  },
+  "environment_flags": {
+    "FREETOKEN_TRITON_CACHE_AMD_KNOB": "0",
+    "AMDGCN_USE_BUFFER_OPS": "1",
+    "FREETOKEN_MAMBA_SSM_DTYPE": "float32",
+    "FREETOKEN_EXPERIMENT_BASELINE": "1",
+    "FREETOKEN_FUSED_COPY": "0",
+    "FREETOKEN_DISABLE_KERNEL_CACHE": "1",
+    "FREETOKEN_DISABLE_OVERLAP_SCHEDULING": "0",
+    "FREETOKEN_TRACE_TOKEN_IDS": "0",
+    "FT_DIAG_LOGIT_CHECK_EVERY": "64"
+  },
+  "lab": {
+    "cache_stable_triton_knob": true,
+    "token_trace": false,
+    "finite_snapshots": false,
+    "scheduler_stacks": false,
+    "profiler": false,
+    "moonlight_present": false
+  },
+  "memory_guard_gib": {
+    "startup_free_commit": 45,
+    "runtime_free_physical": 12,
+    "runtime_free_commit": 4,
+    "runtime_free_gpu_local": 3,
+    "recovery_free_commit": 28
+  },
+  "acceptance": {
+    "short_matched_capacity_passed": true,
+    "requests": 9,
+    "measured_per_capacity": 2,
+    "all_stop_clean": true,
+    "final_tree_long_prefix_rerun": false,
+    "prior_long_prefill_tokens": 63488,
+    "prior_long_stage": 2,
+    "numerical_files_unchanged_from_after_stage2": 14,
+    "legacy_working_release_marker_promoted": false,
+    "general_managed_start_environment_changed": false
+  },
+  "runtime_file_sha256": {
+    "C:\\Users\\Iskandar\\FreeTokenROCm\\.venvs\\freetoken-pydeps-20261012-py312\\Lib\\site-packages\\_rocm_sdk_devel\\lib\\llvm\\bin\\clang-cl.exe": "812397316720f03d66425d660f4e861c620125ce3d9c5447035062a442c5ab29",
+    "C:\\Users\\Iskandar\\FreeTokenROCm\\.venvs\\freetoken-pydeps-20261012-py312\\Lib\\site-packages\\_rocm_sdk_devel\\bin\\amdhip64_7.dll": "546fb3d6e2d2194a9526fb94ec2fd3aa5b92a48a7595f04efece80162047ef69",
+    "C:\\Users\\Iskandar\\FreeTokenROCm\\.venvs\\freetoken-pydeps-20261012-py312\\Lib\\site-packages\\torch\\lib\\torch_hip.dll": "28ea13f7de8a0480081d44fc27ac693419ec29a96782afccc4b212e472600119",
+    "C:\\Users\\Iskandar\\FreeTokenROCm\\.venvs\\freetoken-pydeps-20261012-py312\\Lib\\site-packages\\torch\\_C.cp312-win_amd64.pyd": "185881e4c0330ed6d743284870ffa1ab0ee350e8943b4028dc37d1ea810fae9c",
+    "C:\\Users\\Iskandar\\FreeTokenROCm\\.venvs\\freetoken-pydeps-20261012-py312\\Lib\\site-packages\\triton\\_C\\libtriton.pyd": "cdfedeea4164740cefd508c36aff58a39a2d24ad42217423f858275fa2044eef"
+  },
+  "evidence": {
+    "audit_root": "C:\\Users\\Iskandar\\FreeTokenROCm\\rocm10-20260926\\research-refresh-20261011-audit\\stage8-20261012",
+    "packages_sha256": "ea7cc0331d5c455d47303a395cfe92913021c4a7f72f0ae85c1c8badac32f175",
+    "runtime_manifest_sha256": "6a197f48cc3fa54d6c889b31e266ca80780f4a06aaf7f188365615b6d2314246",
+    "runtime_comparison_sha256": "2e2f5f2cb9d74cad43436631f7088c33cd7517b2ea37670f0c44b138a7edc559",
+    "spec_sha256": "567ee06dd08d8e0c63e40d8949203d958869df8c165c823a6874a65c705c9d5f",
+    "report": "../docs/integration-research-stage8-20261012.md"
+  },
+  "deferred": [
+    "ROCm10.1/Torch2.14/Triton post29 compiler qualification",
+    "stage7 prefix reuse",
+    "stage6 optional paths with overlap/long prefill",
+    "TVM-FFI0.1.14.post1 and Numba/llvmlite updates"
+  ]
+}

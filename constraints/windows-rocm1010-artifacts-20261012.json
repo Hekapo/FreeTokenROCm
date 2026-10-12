@@ -1,0 +1,146 @@
+{
+  "schema": 1,
+  "recorded_utc": "2026-10-12T12:41:38.483494+00:00",
+  "platform": "Windows x64 / CPython 3.12",
+  "target": "gfx1201",
+  "qualification_status": "prepared; compiler correctness gate failed; GPU not run",
+  "artifacts": [
+    {
+      "package": "torch",
+      "filename": "torch-2.14.0+rocm10.1.0-cp312-cp312-win_amd64.whl",
+      "version": "2.14.0+rocm10.1.0",
+      "url": "https://stable.repo.amd.com/rocm/whl-next/torch/torch-2.14.0%2Brocm10.1.0-cp312-cp312-win_amd64.whl",
+      "bytes": 115562766,
+      "sha256": "81e26c307846267d9490ff8c7421382b954909772abb7770a16baec740f44e4b",
+      "publisher_hash_present": false,
+      "publisher_hash_verified": false,
+      "tags": [
+        "cp312-cp312-win_amd64"
+      ],
+      "cp312_windows_tag_compatible": true
+    },
+    {
+      "package": "amd-torch-device-gfx12-0",
+      "filename": "amd_torch_device_gfx12_0-2.14.0+rocm10.1.0-cp312-cp312-win_amd64.whl",
+      "version": "2.14.0+rocm10.1.0",
+      "url": "https://stable.repo.amd.com/rocm/whl-next/amd-torch-device-gfx12-0/amd_torch_device_gfx12_0-2.14.0%2Brocm10.1.0-cp312-cp312-win_amd64.whl",
+      "bytes": 171974545,
+      "sha256": "99a2ea25169bd7fa73db629d1f933b9ab1a719b6a1e4c7c94011d68b2dbc8425",
+      "publisher_hash_present": false,
+      "publisher_hash_verified": false,
+      "tags": [
+        "cp312-cp312-win_amd64"
+      ],
+      "cp312_windows_tag_compatible": true
+    },
+    {
+      "package": "amd-torch-device-gfx1201",
+      "filename": "amd_torch_device_gfx1201-2.14.0+rocm10.1.0-cp312-cp312-win_amd64.whl",
+      "version": "2.14.0+rocm10.1.0",
+      "url": "https://stable.repo.amd.com/rocm/whl-next/amd-torch-device-gfx1201/amd_torch_device_gfx1201-2.14.0%2Brocm10.1.0-cp312-cp312-win_amd64.whl",
+      "bytes": 51083884,
+      "sha256": "d73602808095792fe420ecbf43d92331f39ae087bda76054d379b6fa1d9c0a0e",
+      "publisher_hash_present": false,
+      "publisher_hash_verified": false,
+      "tags": [
+        "cp312-cp312-win_amd64"
+      ],
+      "cp312_windows_tag_compatible": true
+    },
+    {
+      "package": "rocm",
+      "filename": "rocm-10.1.0.tar.gz",
+      "version": "10.1.0",
+      "url": "https://stable.repo.amd.com/rocm/whl-next/rocm/rocm-10.1.0.tar.gz",
+      "bytes": 27536,
+      "sha256": "e6616e62ebd1324031681e6e59349d46ee4f143a8d8f4f901a91c35c993041fc",
+      "publisher_hash_present": false,
+      "publisher_hash_verified": false,
+      "tags": null,
+      "cp312_windows_tag_compatible": null
+    },
+    {
+      "package": "rocm-sdk-core",
+      "filename": "rocm_sdk_core-10.1.0-py3-none-win_amd64.whl",
+      "version": "10.1.0",
+      "url": "https://stable.repo.amd.com/rocm/whl-next/rocm-sdk-core/rocm_sdk_core-10.1.0-py3-none-win_amd64.whl",
+      "bytes": 776978384,
+      "sha256": "b12f1c4cde14ed1cd8864006d17586c6b1e6a4e4695b9597cfe04ed7715e952f",
+      "publisher_hash_present": false,
+      "publisher_hash_verified": false,
+      "tags": [
+        "py3-none-win_amd64"
+      ],
+      "cp312_windows_tag_compatible": true
+    },
+    {
+      "package": "rocm-sdk-devel",
+      "filename": "rocm_sdk_devel-10.1.0-py3-none-win_amd64.whl",
+      "version": "10.1.0",
+      "url": "https://stable.repo.amd.com/rocm/whl-next/rocm-sdk-devel/rocm_sdk_devel-10.1.0-py3-none-win_amd64.whl",
+      "bytes": 246071895,
+      "sha256": "58847f1b2b30f9194188c38de6f9f3c71b8fdf6a10a203e8e7ec73d34a5c0c7e",
+      "publisher_hash_present": false,
+      "publisher_hash_verified": false,
+      "tags": [
+        "py3-none-win_amd64"
+      ],
+      "cp312_windows_tag_compatible": true
+    },
+    {
+      "package": "rocm-sdk-libraries",
+      "filename": "rocm_sdk_libraries-10.1.0-py3-none-win_amd64.whl",
+      "version": "10.1.0",
+      "url": "https://stable.repo.amd.com/rocm/whl-next/rocm-sdk-libraries/rocm_sdk_libraries-10.1.0-py3-none-win_amd64.whl",
+      "bytes": 118645973,
+      "sha256": "0c34bafbb4aa626cc710d8b130bb314f591194c3d79eeb5892b755ea0be06159",
+      "publisher_hash_present": false,
+      "publisher_hash_verified": false,
+      "tags": [
+        "py3-none-win_amd64"
+      ],
+      "cp312_windows_tag_compatible": true
+    },
+    {
+      "package": "rocm-sdk-device-gfx1201",
+      "filename": "rocm_sdk_device_gfx1201-10.1.0-py3-none-win_amd64.whl",
+      "version": "10.1.0",
+      "url": "https://stable.repo.amd.com/rocm/whl-next/rocm-sdk-device-gfx1201/rocm_sdk_device_gfx1201-10.1.0-py3-none-win_amd64.whl",
+      "bytes": 314133708,
+      "sha256": "56085e8f865b6b96c230fe8d1731074103553d0d958a31be13907d01e558fd0e",
+      "publisher_hash_present": false,
+      "publisher_hash_verified": false,
+      "tags": [
+        "py3-none-win_amd64"
+      ],
+      "cp312_windows_tag_compatible": true
+    },
+    {
+      "package": "triton-windows",
+      "filename": "triton_windows-3.8.0.post29-cp312-cp312-win_amd64.whl",
+      "version": "3.8.0.post29",
+      "url": "https://files.pythonhosted.org/packages/ec/bc/b027bba13beb00cd4993a33b7fa89a84ef3a42ecd05d8a0e346526a7dc80/triton_windows-3.8.0.post29-cp312-cp312-win_amd64.whl",
+      "bytes": 52810080,
+      "sha256": "937ba2ee53b6e664709898537de3eb9eab427a498c04da58f2bd42e1af93e298",
+      "publisher_hash_present": true,
+      "publisher_hash_verified": true,
+      "tags": [
+        "cp312-cp312-win_amd64"
+      ],
+      "cp312_windows_tag_compatible": true
+    }
+  ],
+  "rocm_metapackage_build": {
+    "sha256": "d714cdf643962d1006c028a7694a98e67963959318e5150a526f1703d95afcb2",
+    "bytes": 32989,
+    "source_sha256": "e6616e62ebd1324031681e6e59349d46ee4f143a8d8f4f901a91c35c993041fc",
+    "build_python": "3.12.0",
+    "setuptools": "84.0.0",
+    "build_isolation": false,
+    "offline": true,
+    "ROCM_SDK_TARGET_FAMILY": "gfx1201"
+  },
+  "rocm_metapackage_filename": "rocm-10.1.0-py3-none-any.whl",
+  "dependencies": "windows-rocm1010-candidate-20261012.txt",
+  "report": "../docs/integration-research-stage5-20261012.md"
+}

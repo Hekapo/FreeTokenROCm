@@ -20,7 +20,7 @@ CUDA kernels are JIT-compiled on first use, need a CUDA 13 toolkit with `nvcc` o
 ### AMD ROCm source install (experimental)
 
 Use an official ROCm PyTorch image whose PyTorch version satisfies the project's
-`torch>=2.11,<2.14` constraint. For RDNA4, the matching ROCm 7.14 image is:
+`torch>=2.11,<2.15` constraint. For RDNA4, the matching ROCm 7.14 image is:
 
 ```bash
 VIDEO_GID="$(getent group video | cut -d: -f3)"
@@ -54,6 +54,15 @@ git clone https://github.com/FlashML-org/FreeToken.git && cd FreeToken
 uv venv && source .venv/bin/activate
 uv pip install -e ".[accel]"
 ```
+
+### Optional ModelScope downloads
+
+ModelScope is needed for remote downloads with `--model-source modelscope`.
+Add the `modelscope` extra to your chosen installation, for example
+`uv pip install -e ".[accel,modelscope]"` for the CUDA source installation above.
+Local model directories and GGUF files work without this extra, including when
+`--model-source modelscope` is selected. Hugging Face downloads remain available
+without ModelScope.
 
 ## Method 3: Nightly wheels
 

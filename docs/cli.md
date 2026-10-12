@@ -87,6 +87,7 @@ See [models.md](models.md#moe-strategies) for what each strategy does.
 | `--moe-cpu-threads` | physical cores | CPU worker threads for the cpu/hybrid executor |
 | `--moe-cpu-layers` | all on GPU | With `offload`: which MoE layers decode on CPU (`3,7,11`, a count, a fraction, or `auto`). `auto` is for Windows/WSL only, where CUDA pinned memory is capped; every value needs an expert format the CPU executor serves (bf16, nvfp4, mxfp4), so fp8 experts cannot use it |
 | `--moe-hybrid-max-fetch` | auto | With `hybrid`: max experts fetched over PCIe per layer per step; rest computed on CPU |
+| `--moe-prefill-demand-tokens` | 0 | Opt-in for short ROCm Q4_1 prefill: load only routed experts. Limit 0–32 tokens; requires `--disable-moe-prefill-overlap`. Qualified profile and results: [stage6.2](integration-research-stage6b-20261012.md) |
 | `--moe-prefill-hit-d2d` | off | Prefill: copy cache-hit experts device-side, stream only misses (CUDA >= 13) |
 | `--disable-moe-prefill-overlap` | overlap on | Disable the two-buffer prefill copy overlap |
 
@@ -98,6 +99,7 @@ See [models.md](models.md#moe-strategies) for what each strategy does.
 | `--tool-call-parser` | auto | Tool-call format; auto-inferred from the model family |
 | `--reasoning-parser` | auto | Splits chain-of-thought into `reasoning_content`; auto-inferred; `off` disables |
 | `--enable-cache-report` | off | Report prefix-cache hits in each response's usage block |
+| `--anthropic-inline-system` | auto | Late Anthropic system instructions: `auto` probes the template, `preserve` keeps supported system turns, `fold` adds instructions to nearby user/tool content |
 
 ## ft shell
 
@@ -161,6 +163,34 @@ offload` (default) packs experts into offload banks; `--moe-backend triton`
 keeps them dense for resident serving. See the FTW caveats in
 [models.md](models.md#notes); FTW files from older builds can be repaired with
 [scripts/ftw_hotfix.py](ftw-hotfix.md) instead of reconverting.
+
+Conversion refuses output directories containing `freetoken_weight.json` or
+`freetoken-*.ftw` shards. For a repeat conversion, choose a new output directory;
+an interrupted conversion cannot be resumed.
+
+## Optional AMD Triton initialization
+
+Set `FREETOKEN_TRITON_CACHE_AMD_KNOB=1` before starting `ft serve` to cache the
+current effective `triton.knobs.amd.use_buffer_ops` boolean once per process.
+The option defaults to off and applies to ROCm with the recognized Triton3.8.0
+boolean descriptor. Other versions or descriptors are skipped.
+
+Torch loads its matching SDK before Triton. The current boolean is retained,
+including `AMDGCN_USE_BUFFER_OPS` and prior Python overrides. Explicit later
+Python assignments remain effective. Changing environment configuration after
+initialization requires a fresh process. The option reduces repeated environment
+getter calls; it does not change the selected buffer-ops value.
+
+```powershell
+$env:FREETOKEN_TRITON_CACHE_AMD_KNOB = '1'
+ft serve --model C:/models/model.gguf
+```
+
+Unset the variable or set it to `0`, then restart, to restore the default getter
+behavior. CLI/daemon imports remain free of Torch until kernels are imported.
+The short comparison did not establish a throughput gain. Runtime qualification
+and A/B evidence are recorded in the
+[stage6 report](integration-research-stage6-20261012.md).
 
 ## ft bench bw
 
