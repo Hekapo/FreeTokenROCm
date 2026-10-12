@@ -3,6 +3,7 @@ from __future__ import annotations
 import torch
 import torch.nn.functional as F
 from freetoken.core import get_global_ctx
+from freetoken.diagnostics import FINITE_DIAGNOSTICS
 from freetoken.kernel.causal_conv1d import causal_conv1d_decode, causal_conv1d_varlen
 from freetoken.layers import BaseOP, GatedRMSNorm, LinearColParallelMerged, LinearReplicated
 from freetoken.layers.quantization import QuantConfig
@@ -124,6 +125,10 @@ class Qwen3_5GatedDeltaNet(BaseOP):
         cv.index_copy_(0, fla.track_dst, conv_win.to(cv.dtype))
 
     def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
+        diagnostic = FINITE_DIAGNOSTICS
+        capture = diagnostic is not None and diagnostic.active
+        if capture:
+            diagnostic.check("gdn.input", {"hidden": hidden_states})
         ctx = get_global_ctx()
         batch = ctx.batch
         pool = ctx.linear_state_pool
@@ -150,6 +155,16 @@ class Qwen3_5GatedDeltaNet(BaseOP):
             conv_in, z, b, a = torch.split(proj, self._in_proj_split, dim=-1)
         z = z.reshape(total, self.num_v_heads, self.head_v_dim)
         li = pool.local_index(self.layer_id)
+        if capture:
+            diagnostic.metadata["gdn"] = {
+                "state_layout": "slot,H,V,K", "local_layer": li,
+                "indices": fla.cache_indices.detach().cpu().tolist(),
+                "cu_seqlens": fla.cu_seqlens.detach().cpu().tolist(),
+                "H": self.num_v_heads, "Hg": self.num_k_heads,
+                "K": self.head_k_dim, "V": self.head_v_dim, "T": total,
+            }
+            diagnostic.check("gdn.projection", {"conv_in": conv_in, "z": z, "b": b, "a": a},
+                             inputs={"hidden": hidden_states})
 
         if batch.is_decode:
             # Fused fla decode kernel: gating + in-kernel l2norm + recurrent update +
@@ -167,11 +182,20 @@ class Qwen3_5GatedDeltaNet(BaseOP):
                 cu_seqlens=fla.cu_seqlens, scale=self.head_k_dim ** -0.5,
             )
         else:
+            if capture:
+                # Fresh convolution slots may be uninitialized and are not read.
+                live_slots = fla.cache_indices[fla.has_initial_state].detach().cpu().tolist()
+                conv_states = {f"state_slot_{s}": pool.conv_states[li, s] for s in live_slots}
+                diagnostic.check("gdn.conv_state_input", conv_states)
+                conv_inputs = diagnostic.preserve({"conv_in": conv_in, **conv_states})
             mixed = self._conv_prefill(
                 conv_in, pool, fla.cu_seqlens, fla.cache_indices, fla.has_initial_state,
                 # This is the query chunk length, not the accumulated context.
                 # Avoid a device scalar read in each of the 30 GDN layers.
                 max_seq_len=max(req.extend_len for req in batch.padded_reqs))
+            if capture:
+                diagnostic.check("gdn.convolution", {"mixed": mixed, **diagnostic.selected_states(pool.conv_states[li], fla.cache_indices)},
+                                 inputs=conv_inputs)
             # fla chunk handles GQA in-kernel: q/k stay at num_k_heads, v at num_v_heads.
             qf, kf, vf = torch.split(mixed, [self.key_dim, self.key_dim, self.value_dim], dim=-1)
             q = qf.reshape(1, total, self.num_k_heads, self.head_k_dim).to(dtype)
@@ -180,6 +204,9 @@ class Qwen3_5GatedDeltaNet(BaseOP):
             g, beta = self._gate_params(a, b)
             g = g.reshape(1, total, self.num_v_heads)
             beta = beta.float().reshape(1, total, self.num_v_heads)
+            if capture:
+                diagnostic.check("gdn.gates", {"g": g, "beta": beta},
+                                 inputs={"a": a, "b": b, "A_log": self.A_log, "dt_bias": self.dt_bias})
             # The chunk kernel reads + writes back initial_state[cache_indices] in place;
             # fresh sequences (cached_len==0) must start from a zeroed slot.
             if fla.fresh_state_indices is not None:
@@ -197,10 +224,17 @@ class Qwen3_5GatedDeltaNet(BaseOP):
             else:
                 core_out = result
 
+        if capture:
+            diagnostic.check("gdn.core_output", {"core_out": core_out})
         core_out = core_out.reshape(-1, self.head_v_dim)
         z = z.reshape(-1, self.head_v_dim)
         out = self.norm.forward(core_out, z).reshape(total, -1)
-        return self.out_proj.forward(out)
+        if capture:
+            diagnostic.check("gdn.gated_norm", {"out": out}, inputs={"core_out": core_out, "z": z})
+        projected = self.out_proj.forward(out)
+        if capture:
+            diagnostic.check("gdn.out_projection", {"out": projected}, inputs={"hidden": out})
+        return projected
 
 
 __all__ = ["Qwen3_5GatedDeltaNet"]

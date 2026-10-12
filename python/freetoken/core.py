@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from contextlib import contextmanager
 from dataclasses import dataclass, field
+from math import isfinite
 from typing import TYPE_CHECKING, List, Literal, Tuple
 
 import torch
@@ -24,6 +25,14 @@ class SamplingParams:
     # Stop strings (OpenAI `stop` / Anthropic `stop_sequences`). Generation finishes when one
     # appears in the decoded output; the matched substring (and anything after) is trimmed.
     stop_strs: list[str] = field(default_factory=list)
+    presence_penalty: float = 0.0
+    frequency_penalty: float = 0.0
+
+    def __post_init__(self) -> None:
+        for name in ("presence_penalty", "frequency_penalty"):
+            value = getattr(self, name)
+            if not isfinite(value) or not -2.0 <= value <= 2.0:
+                raise ValueError(f"{name} must be finite and between -2 and 2, got {value}")
 
     @property
     def is_greedy(self) -> bool:
@@ -63,6 +72,7 @@ class Req:
     # handler must not free resources under an in-flight forward; it sets this flag and
     # _process_last_data frees the request when the batch drains (after copy_done.synchronize).
     aborted: bool = False
+    output_token_counts: torch.Tensor | None = field(default=None, init=False, repr=False)
 
     def __post_init__(self) -> None:
         assert self.input_ids.is_cpu

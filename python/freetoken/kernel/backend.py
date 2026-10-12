@@ -78,7 +78,8 @@ def driver_hip_version() -> int | None:
 
 @functools.cache
 def is_vllm_installed() -> bool:
-    return _importable("vllm")
+    """The local vLLM callers use CUDA-only FP4 Marlin kernels."""
+    return not is_rocm_runtime() and _importable("vllm")
 
 
 @functools.cache

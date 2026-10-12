@@ -90,6 +90,48 @@ def _last_row() -> dict:
     return rows[-1]
 
 
+@pytest.mark.parametrize(
+    "pools, expected", [(None, 1), ({"page_size": 0}, 1), ({"page_size": 64}, 64), ({"page_size": 128}, 128)]
+)
+def test_stats_uses_backend_page_geometry(pools, expected):
+    from freetoken.server.stats import StatsTracker, build_stats
+
+    tracker = StatsTracker()
+    config = SimpleNamespace(
+        served_model_name="unit-model", max_seq_len=65536, page_size=1,
+        model_config=SimpleNamespace(),
+    )
+    state = SimpleNamespace(stats=tracker, config=config, cache_pools=pools)
+    assert build_stats(state, 0, 0)["kv"] is None
+    tracker.observe(UserReply(uid=1, incremental_output="", finished=False, kv_used_pages=5, kv_total_pages=130))
+    doc = build_stats(state, 0, 0)
+    assert doc["kv"] == {"used_pages": 5, "total_pages": 130, "page_size": expected}
+    assert doc["model"]["ctx"] == 65536
+    assert doc["requests"]["prompt_tokens_total"] == 0
+
+
+def test_stats_tracks_changed_backend_capacity_and_request_tokens():
+    from freetoken.server.stats import StatsTracker, build_stats
+
+    tracker = StatsTracker()
+    config = SimpleNamespace(
+        served_model_name="unit-model", max_seq_len=65536, page_size=1,
+        model_config=SimpleNamespace(),
+    )
+    state = SimpleNamespace(stats=tracker, config=config, cache_pools={"page_size": 64})
+    tracker.observe(UserReply(
+        uid=1, incremental_output="", finished=False, kv_used_pages=7,
+        kv_total_pages=130, prompt_tokens_delta=400,
+    ))
+    assert build_stats(state, 0, 0)["kv"] == {"used_pages": 7, "total_pages": 130, "page_size": 64}
+
+    state.cache_pools = {"page_size": 128}
+    tracker.observe(UserReply(uid=2, incremental_output="", finished=False, kv_used_pages=0, kv_total_pages=20))
+    doc = build_stats(state, 0, 0)
+    assert doc["kv"] == {"used_pages": 0, "total_pages": 20, "page_size": 128}
+    assert doc["requests"]["prompt_tokens_total"] == 400
+
+
 def test_non_stream_records_the_request_with_real_token_totals():
     request_ring.reset()
     st = FakeState([_ack(prompt=5, completion=1, out="a"), _ack(completion=2, out="bc", finished=True)])

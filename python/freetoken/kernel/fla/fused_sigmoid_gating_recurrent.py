@@ -61,7 +61,11 @@ def fused_sigmoid_gating_delta_rule_update_kernel(
     """
     Fused kernel that combines sigmoid gating computation with recurrent delta rule update.
     """
-    i_k, i_v, i_nh = tl.program_id(0), tl.program_id(1), tl.program_id(2)
+    i_k, i_v, i_nh = (
+        tl.program_id(0).to(tl.int64),
+        tl.program_id(1).to(tl.int64),
+        tl.program_id(2).to(tl.int64),
+    )
     i_n, i_hv = i_nh // HV, i_nh % HV
     i_h = i_hv // (HV // H)
 
@@ -100,7 +104,7 @@ def fused_sigmoid_gating_delta_rule_update_kernel(
 
     b_h = tl.zeros([BK, BV], dtype=tl.float32)
     if USE_INITIAL_STATE:
-        idx = tl.load(h0_indices + i_n)
+        idx = tl.load(h0_indices + i_n).to(tl.int64)
         if idx >= 0:
             p_h0 = (
                 h0_source
@@ -122,14 +126,14 @@ def fused_sigmoid_gating_delta_rule_update_kernel(
         )
         parent_idx_tokens = tl.load(
             retrieve_parent_token_base, mask=mask_retrieve, other=0
-        )
+        ).to(tl.int64)
 
     # Prepare intermediate state cache index if enabled
     cache_idx = -1
     if CACHE_INTERMEDIATE_STATES:
-        cache_idx = tl.load(intermediate_state_indices + i_n)
+        cache_idx = tl.load(intermediate_state_indices + i_n).to(tl.int64)
 
-    step_idx = 0
+    step_idx = tl.full((), 0, tl.int64)
     for _ in range(0, T):
         # Tree attention: load parent's cached state
         if HAS_EAGLE_TREE_CUSTOM_ATTN_MASK:
@@ -232,7 +236,7 @@ def fused_sigmoid_gating_delta_rule_update_kernel(
     # Store final state back to h0_source with bounds checking
     if not DISABLE_STATE_UPDATE:
         if USE_INITIAL_STATE:
-            idx = tl.load(h0_indices + i_n)
+            idx = tl.load(h0_indices + i_n).to(tl.int64)
             if idx >= 0:
                 p_h0 = (
                     h0_source

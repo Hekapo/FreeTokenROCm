@@ -26,11 +26,34 @@ class _DeprecatedAlias(argparse.Action):
         setattr(namespace, self.dest, self.convert(values) if self.convert else values)
 
 
+def _download_modelscope(model_path: str, use_dummy_weight: bool) -> str:
+    if os.path.exists(model_path):
+        return model_path
+    try:
+        from modelscope import snapshot_download
+    except ModuleNotFoundError as exc:
+        if exc.name != "modelscope":
+            raise
+        raise ValueError(
+            "ModelScope downloads require the optional freetoken[modelscope] dependency. "
+            "Install it in this environment or use --model-source huggingface."
+        ) from exc
+    ignore_patterns = ["*.bin", "*.safetensors", "*.pt", "*.ckpt"] if use_dummy_weight else []
+    return snapshot_download(model_path, ignore_patterns=ignore_patterns)
+
+
 def _nvfp4_entry(value: str) -> str:
     """The --quant-backend entry an old --nvfp4-backend value stands for; auto stands for none."""
     if value == "auto":
         return ""
     return "moe.nvfp4=" + {"flashinfer": "b12x"}.get(value, value)
+
+
+def _prefill_demand_tokens(value: str) -> int:
+    tokens = int(value)
+    if not 0 <= tokens <= 32:
+        raise argparse.ArgumentTypeError("prefill demand tokens must be in [0, 32]")
+    return tokens
 
 
 @dataclass(frozen=True)
@@ -60,6 +83,7 @@ class ServerArgs(SchedulerConfig):
     # prompt_tokens_details.cached_tokens, Anthropic cache_read_input_tokens, Responses
     # input_tokens_details.cached_tokens). Mirrors sglang's --enable-cache-report.
     enable_cache_report: bool = False
+    anthropic_inline_system: str = "auto"
     # Comma-separated CORS allow-list for browser/webview clients (e.g. the desktop
     # app). Empty string disables CORS headers entirely; "*" allows any origin.
     cors_origins: str = "tauri://localhost,http://tauri.localhost,http://localhost:1420"
@@ -457,6 +481,14 @@ def parse_args(
     )
 
     parser.add_argument(
+        "--anthropic-inline-system",
+        choices=("auto", "preserve", "fold"),
+        default=ServerArgs.anthropic_inline_system,
+        help="Preserve late system instructions when supported by the renderer, "
+        "or fold them into nearby user/tool content without changing the prompt prefix.",
+    )
+
+    parser.add_argument(
         "--sampling-defaults",
         type=str,
         default=ServerArgs.sampling_defaults,
@@ -614,6 +646,13 @@ def parse_args(
         default=ServerArgs.moe_cache_policy,
         choices=["lru"],
         help="The unified MoE cache eviction policy.",
+    )
+
+    parser.add_argument(
+        "--moe-prefill-demand-tokens",
+        type=_prefill_demand_tokens,
+        default=ServerArgs.moe_prefill_demand_tokens,
+        help="Load only routed experts for short ROCm Q4_1 prefill chunks (0-32 tokens); 0 disables.",
     )
 
     parser.add_argument(
@@ -782,15 +821,7 @@ def parse_args(
         kwargs["moe_cache_auto"] = True
 
     if kwargs["model_source"] == "modelscope":
-        model_path = kwargs["model_path"]
-        if not os.path.isdir(model_path):
-            from modelscope import snapshot_download
-
-            ignore_patterns = []
-            if kwargs["use_dummy_weight"]:
-                ignore_patterns = ["*.bin", "*.safetensors", "*.pt", "*.ckpt"]
-            model_path = snapshot_download(model_path, ignore_patterns=ignore_patterns)
-            kwargs["model_path"] = model_path
+        kwargs["model_path"] = _download_modelscope(kwargs["model_path"], kwargs["use_dummy_weight"])
     del kwargs["model_source"]
 
     # "auto" (or an unspecified dtype) resolves to the checkpoint's dtype. Multimodal /

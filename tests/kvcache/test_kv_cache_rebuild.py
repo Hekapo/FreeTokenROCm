@@ -209,6 +209,20 @@ def test_dsv4_rebuild_from_config_builds_the_pool_sizes_and_attaches_the_table()
     assert pool.window_pool[0].shape[0] == pool.sizes.n_win_slots
     assert pool.unit_bytes() == (dsv4_kv_unit_bytes(args, P), dsv4_window_unit_bytes(args, P))
 
+    def allocated_tier_bytes():
+        tensors = [pool.full_to_window]
+        for family in (pool.window_pool, pool.cmp_pool, pool.idx_pool):
+            tensors.extend(t for t in family if t is not None)
+        for family in (pool.state_ring, pool.indexer_state_ring):
+            tensors.extend(ring.buffer for ring in family if ring is not None)
+        return sum(t.numel() * t.element_size() for t in tensors)
+
+    assert pool.rebuild_footprint(config, 15, None) == allocated_tier_bytes()
+    config.swa_num_pages_override = 20
+    pool.rebuild_from_config(config, 31, num_swa_pages=14)
+    assert pool.rebuild_footprint(config, 31, 14) == allocated_tier_bytes()
+    assert config.swa_num_pages_override == 20
+
     page_table = torch.zeros((mrr + 1, 64), dtype=torch.int32)
     pool.attach_page_table(page_table)
     assert pool.full_loc_map is page_table
@@ -269,9 +283,9 @@ def test_every_kv_pool_answers_the_sizing_surface():
     from freetoken.kvcache.mha_pool import MHAKVCache
 
     for cls in (MHAKVCache, MLAKVCache, DSAKVCache, HybridSWAKVCache, DSV4PagedKVCache):
-        for hook in ("kv_cost", "solve_num_pages", "min_kv_tokens", "validate_rebuild"):
+        for hook in ("kv_cost", "solve_num_pages", "min_kv_tokens", "validate_rebuild", "rebuild_footprint"):
             assert callable(getattr(cls, hook, None)), f"{cls.__name__} is missing {hook}"
-    for hook in ("kv_cost", "solve_num_pages", "min_kv_tokens", "validate_rebuild"):
+    for hook in ("kv_cost", "solve_num_pages", "min_kv_tokens", "validate_rebuild", "rebuild_footprint"):
         assert hook in DSV4PagedKVCache.__dict__, f"DSV4 lost its {hook} override"
 
 

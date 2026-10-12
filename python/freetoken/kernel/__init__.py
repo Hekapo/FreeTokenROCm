@@ -1,3 +1,7 @@
+from freetoken._triton_runtime import initialize_amd_buffer_ops
+
+initialize_amd_buffer_ops()
+
 from .index import indexing
 from .fast_index_copy import fast_index_copy_jit, update_copy_flag_jit
 from .moe_impl import (

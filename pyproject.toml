@@ -3,7 +3,7 @@
 # own, and a mismatch links the C++ extensions against the wrong libtorch.
 # setuptools floor: 77 is the first release that understands the PEP 639 `license`
 # SPDX string and `license-files` below.
-requires = ["setuptools>=77", "torch>=2.11,<2.14", "wheel"]
+requires = ["setuptools>=77", "torch>=2.11,<2.15", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -48,7 +48,6 @@ dependencies = [
     "gguf>=0.19,<1",
     "huggingface_hub>=1.5,<2",
     "msgpack>=1.1,<2",
-    "modelscope>=1.37,<2",
     # ceiling: numba (via flashlib) needs numpy<2.5
     "numpy>=2.0,<2.5",
     "openai>=2.0,<3",
@@ -63,7 +62,7 @@ dependencies = [
     # ROCm note: on AMD (rocm.nightlies.amd.com builds) this range is intentionally
     # loosened -- those wheels report their own local version segment
     # (2.13.0a0+rocm...) which the sglang-kernel/cu130 constraint above doesn't apply to.
-    "torch>=2.11,<2.14",
+    "torch>=2.11,<2.15",
     "tqdm>=4.66,<5",
     "transformers>=5.5,<6",
     # CUDA torch 2.11 resolves Triton 3.6; AMD's ROCm 7.14 image supplies its
@@ -82,6 +81,7 @@ Issues = "https://github.com/FlashML-org/FreeToken/issues"
 ft = "freetoken.cli:main"
 
 [project.optional-dependencies]
+modelscope = ["modelscope>=1.37,<2"]
 dev = ["pytest>=6.0"]
 # Native fused-kernel packages. Without them the runtime falls back to the pure-Triton
 # kernels in freetoken.kernel.triton (and the 'triton' attention backend). Install

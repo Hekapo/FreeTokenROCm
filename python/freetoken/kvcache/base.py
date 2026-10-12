@@ -119,6 +119,18 @@ class BaseKVCachePool(ABC):
                 f"needs {mem_GB(need)} > budget {mem_GB(budget)}; old cache kept, still serving"
             )
 
+    @classmethod
+    def rebuild_footprint(cls, config, num_pages: int, num_swa_pages: int | None) -> int:
+        """Price the pool family for resize ordering, using its rebuild cost model."""
+        import inspect
+
+        cost_params = inspect.signature(cls.kv_cost).parameters
+        cost_kwargs = (
+            {"num_swa_pages": num_swa_pages} if "num_swa_pages" in cost_params else {}
+        )
+        per_page, fixed, _, _ = cls.kv_cost(config, **cost_kwargs)
+        return num_pages * per_page + fixed
+
     @abstractmethod
     def rebuild_from_config(
         self, config, num_pages: int, *, num_swa_pages: int | None = None

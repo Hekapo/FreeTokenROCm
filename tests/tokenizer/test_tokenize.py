@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+from copy import deepcopy
+import re
 
 import pytest
 import torch
@@ -8,6 +10,139 @@ import torch
 from freetoken.core import SamplingParams
 from freetoken.message import TokenizeMsg
 from freetoken.tokenizer.tokenize import TokenizeManager, _dsv4_arguments_str
+from freetoken.tokenizer.inline_system import InlineSystemError, normalize_inline_system, probe_inline_system
+
+
+@pytest.mark.parametrize("mode", ["preserve", "fold"])
+def test_inline_system_waits_for_parallel_tools_without_mutation(mode):
+    messages = [
+        {"role": "system", "content": "stable"},
+        {"role": "user", "content": "read files"},
+        {"role": "assistant", "tool_calls": [{"id": "a"}, {"id": "b"}],
+         "reasoning_content": "retain this reasoning"},
+        {"role": "system", "content": "reminder"},
+        {"role": "tool", "tool_call_id": "a", "content": "first"},
+        {"role": "tool", "tool_call_id": "b", "content": "second"},
+    ]
+    original = deepcopy(messages)
+    result = normalize_inline_system(messages, mode)
+    assert [m["role"] for m in result[:5]] == ["system", "user", "assistant", "tool", "tool"]
+    assert result[2]["reasoning_content"] == "retain this reasoning"
+    if mode == "preserve":
+        assert result[5] == messages[3]
+    else:
+        assert result[-1]["content"] == "second\n\nreminder"
+    assert messages == original
+
+
+@pytest.mark.parametrize("mode", ["preserve", "fold"])
+@pytest.mark.parametrize("tail", [[], [{"role": "user", "content": "next"}]])
+def test_inline_system_rejects_incomplete_tools(mode, tail):
+    messages = [{"role": "assistant", "tool_calls": [{"id": "missing"}]},
+                {"role": "system", "content": "reminder"}, *tail]
+    with pytest.raises(InlineSystemError, match="tool"):
+        normalize_inline_system(messages, mode)
+
+
+def test_inline_fold_preserves_prefix_and_content_blocks():
+    messages = [{"role": "system", "content": "stable"},
+                {"role": "user", "content": [{"type": "text", "text": "question"}]},
+                {"role": "system", "content": "note"},
+                {"role": "assistant", "content": "answer"},
+                {"role": "system", "content": "next note"},
+                {"role": "user", "content": "next question"}]
+    original = deepcopy(messages)
+    result = normalize_inline_system(messages, "fold")
+    assert result[0] == messages[0]
+    assert result[1]["content"] == [{"type": "text", "text": "question\n\nnote"}]
+    assert result[-1]["content"] == "next note\n\nnext question"
+    assert messages == original
+    no_system = normalize_inline_system(messages[1:], "preserve")
+    assert all(m["role"] != "system" for m in no_system)
+
+
+class _InlineProbeTokenizer:
+    roles = {"<system>": 1, "<user>": 2, "<assistant>": 3, "<tool>": 4, "<end>": 5}
+    all_special_ids = list(roles.values())
+
+    def __init__(self, behavior="preserve"):
+        self.behavior = behavior
+        self.last_messages = None
+        self.last_kwargs = None
+
+    def get_added_vocab(self):
+        return self.roles
+
+    def encode(self, text, return_tensors=None, **kwargs):
+        tokens = [self.roles[x] if x in self.roles else ord(x) + 100
+                  for x in re.findall(r"<[^>]+>|.", text, re.S)]
+        return torch.tensor([tokens]) if return_tensors else tokens
+
+    def decode(self, ids):
+        inverse = {value: key for key, value in self.roles.items()}
+        return "".join(inverse[x] if x in inverse else chr(x - 100) for x in ids)
+
+    def apply_chat_template(self, messages, **kwargs):
+        self.last_messages = deepcopy(messages)
+        self.last_kwargs = kwargs
+        if self.behavior == "hoist":
+            messages = deepcopy(messages)
+            notes = [m["content"] for m in messages[1:] if m["role"] == "system"]
+            messages[0]["content"] += "".join(notes)
+            messages = [m for i, m in enumerate(messages) if i == 0 or m["role"] != "system"]
+        out = []
+        for i, message in enumerate(messages):
+            role = message["role"]
+            if role == "system" and i > 0:
+                if self.behavior == "reject":
+                    raise ValueError("late system unsupported")
+                if self.behavior == "drop":
+                    continue
+                if self.behavior == "user":
+                    role = "user"
+            out.append(f"<{role}>" + message.get("content", "") +
+                       ("" if self.behavior == "reasoning" and any(m["role"] == "system" for m in messages[1:])
+                        else message.get("reasoning_content", "")) + "<end>")
+        return "".join(out) + "<assistant>"
+
+
+@pytest.mark.parametrize("behavior,expected", [("preserve", "preserve"), ("reject", "fold"),
+                                               ("drop", "fold"), ("user", "fold"),
+                                               ("hoist", "fold"), ("reasoning", "fold")])
+def test_inline_probe_requires_stable_distinct_system_turns(behavior, expected):
+    tokenizer = _InlineProbeTokenizer(behavior)
+    mode, _ = probe_inline_system(tokenizer.apply_chat_template, tokenizer)
+    assert mode == expected
+
+
+def test_inline_policy_is_opt_in_and_probe_cache_is_scoped(monkeypatch):
+    tokenizer = _InlineProbeTokenizer("reject")
+    manager = TokenizeManager(tokenizer)
+    messages = [{"role": "system", "content": "stable"}, {"role": "user", "content": "ask"},
+                {"role": "system", "content": "note"}]
+    msg = TokenizeMsg(1, messages, SamplingParams())
+    with pytest.raises(ValueError, match="unsupported"):
+        manager.render_prompt(msg)
+    calls = []
+
+    def probe(render, tokenizer):
+        calls.append(render)
+        return "fold", "test"
+
+    monkeypatch.setattr("freetoken.tokenizer.tokenize.probe_inline_system", probe)
+    msg.inline_system_policy = "auto"
+    first = manager.render_prompt(msg)
+    assert manager.render_prompt(msg) == first
+    msg.tools = [{"name": "read"}]
+    manager.render_prompt(msg)
+    msg.chat_template_kwargs = {"enable_thinking": False}
+    manager.render_prompt(msg)
+    assert len(calls) == 3
+    assert "inline_system_policy" not in tokenizer.last_kwargs
+    assert messages[-1] == {"role": "system", "content": "note"}
+    [ids] = manager.tokenize([msg])
+    assert ids.dtype == torch.int32
+    assert tokenizer.decode(ids.tolist()).startswith("<system>stable<end><user>ask\n\nnote")
 
 
 class FakeTokenizer:

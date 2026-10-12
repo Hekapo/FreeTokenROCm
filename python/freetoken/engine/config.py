@@ -41,6 +41,7 @@ class EngineConfig:
     moe_cache_auto: bool = False
     kv_reserve_tokens: int = 8192  # KV floor for --moe-cache-auto; small by design (MoE-priority)
     moe_cache_policy: str = "lru"
+    moe_prefill_demand_tokens: int = 0
     moe_prefill_overlap: bool = True
     # Prefill hit/miss split: serve cache-resident experts D2D during prefill
     # prefetch instead of re-streaming the full layer over PCIe. Needs CUDA >= 12.8
@@ -90,6 +91,8 @@ class EngineConfig:
     num_token_override: int | None = None
 
     def __post_init__(self):
+        if type(self.moe_prefill_demand_tokens) is not int or not 0 <= self.moe_prefill_demand_tokens <= 32:
+            raise ValueError("moe_prefill_demand_tokens must be an integer in [0, 32]")
         if self.moe_backend is not None:
             if self.moe_strategy != "auto":
                 raise ValueError("moe_backend is the old name of moe_strategy; pass only moe_strategy")

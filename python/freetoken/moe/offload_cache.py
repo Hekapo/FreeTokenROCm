@@ -132,6 +132,7 @@ class OffloadMoeCache:
     cache_size: int
     device: torch.device
     cache_policy: str = "lru"
+    prefill_demand_tokens: int = 0
     prefill_overlap: bool = False
     # Prefill hit/miss split: experts already resident in the slot cache (slots
     # >= 2 * num_experts) are gathered device-side into the double buffer instead
@@ -177,6 +178,8 @@ class OffloadMoeCache:
     max_slots: int | None = None
 
     def __post_init__(self) -> None:
+        if type(self.prefill_demand_tokens) is not int or not 0 <= self.prefill_demand_tokens <= 32:
+            raise ValueError("prefill_demand_tokens must be an integer in [0, 32]")
         policy_ids = {"lru": 0}
         assert self.cache_policy in policy_ids
         assert self.decode_target in ("gpu", "cpu", "hybrid"), self.decode_target
@@ -876,17 +879,32 @@ class OffloadMoeCache:
             self._prefill_buffer_has_release_event[buffer_id] = True
         self._prefill_buffer_released[buffer_id] = True
 
-    def ensure_experts(self, layer_id: int, expert_ids: torch.Tensor) -> None:
+    def loads_prefill_on_demand(self, num_tokens: int, num_routes: int, *, layer_id: int) -> bool:
+        # Bounding raw routes also bounds LRU dedup work and avoids a unique() host sync.
+        return (
+            0 < num_tokens <= self.prefill_demand_tokens
+            and 0 < num_routes < self.num_experts and num_routes <= 256
+            and num_routes <= self.cache_size
+            and self.device.type == "cuda" and torch.version.hip is not None
+            and self.quant_format == "gguf" and self.gguf_expert_types == (3, 3)
+            and self.decode_target == "gpu" and not self.is_cpu_layer(layer_id)
+            and not self.prefill_overlap
+        )
+
+    def ensure_experts(self, layer_id: int, expert_ids: torch.Tensor, *, counts_as_decode: bool = True) -> None:
         from freetoken.moe.offload_kernels import ensure_experts
 
-        if self.collect_decode_freq:
+        if self.collect_decode_freq and counts_as_decode:
             # ``expert_ids`` still holds raw expert ids here (the kernel rewrites them to
             # slot ids in place), so snapshot the routing histogram before that happens.
             ids = expert_ids.reshape(-1).long()
             self.decode_freq[layer_id].scatter_add_(0, ids, torch.ones_like(ids))
         self._pending_src_layer = layer_id
         self._pending_whole_layer = False
-        ensure_experts(self, layer_id, expert_ids)
+        if counts_as_decode:
+            ensure_experts(self, layer_id, expert_ids)
+        else:
+            ensure_experts(self, layer_id, expert_ids, record_stats=False)
 
     def ensure_experts_hybrid(self, layer_id: int, expert_ids: torch.Tensor) -> None:
         """Capped-fetch LRU for the hybrid backend.

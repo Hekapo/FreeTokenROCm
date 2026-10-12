@@ -177,3 +177,43 @@ def test_q4_0_moe_matvec_routes_experts_and_matches_reference():
     )
 
     torch.testing.assert_close(actual, expected, rtol=2e-2, atol=0.1)
+
+
+@pytest.mark.skipif(os.environ.get("FT_TEST_GGUF_GRID_GPU") != "1", reason="opt-in GGUF launch boundary gate")
+@pytest.mark.parametrize("down_pass", [False, True], ids=["gate-up", "down"])
+def test_q4_1_moe_grid_boundary_matches_reference_and_split(down_pass):
+    from freetoken.kernel.gguf import ggml_moe_a8_vec
+    from freetoken.models.gguf.dequant import GGML_Q4_1
+
+    experts, rows, columns, tokens, routes = 8, 17, 32, 8192, 8
+    banks, dense_banks = [], []
+    for expert in range(experts):
+        packed_rows, dense_rows = [], []
+        for row in range(rows):
+            scale = torch.tensor([0.0625 * (1 + (row + expert) % 3)], dtype=torch.float16).view(torch.uint8)
+            minimum = torch.tensor([-0.25 * (1 + expert % 3)], dtype=torch.float16).view(torch.uint8)
+            low = (torch.arange(16, dtype=torch.uint8) + row + expert) % 16
+            high = (15 - torch.arange(16, dtype=torch.uint8) + 2 * expert + row) % 16
+            packed_rows.append(torch.cat((scale, minimum, low | (high << 4))))
+            dense_rows.append(torch.cat((low, high)).float() * scale.view(torch.float16).float()
+                              + minimum.view(torch.float16).float())
+        banks.append(torch.stack(packed_rows))
+        dense_banks.append(torch.stack(dense_rows))
+    packed = torch.stack(banks)
+    dense = torch.stack(dense_banks)
+    ids = (torch.arange(tokens)[:, None] + torch.arange(routes)[None, :]) % experts
+    base = (torch.arange(columns, dtype=torch.float32) % 3) - 1
+    vectors = torch.stack([base.roll(i) for i in range(3)])
+    count, top_k = (tokens * routes, 1) if down_pass else (tokens, routes)
+    inputs = vectors[torch.arange(count) % 3].to(torch.bfloat16)
+    flat_ids = ids.reshape(count, top_k).to(torch.int32)
+    expected = torch.einsum("tkrc,tc->tkr", dense[flat_ids.long()], inputs.float()).reshape(-1, rows)
+    weight_gpu, inputs_gpu, ids_gpu = packed.to("cuda"), inputs.to("cuda"), flat_ids.to("cuda")
+    actual = ggml_moe_a8_vec(inputs_gpu, weight_gpu, ids_gpu, top_k, GGML_Q4_1, rows, count)
+    half = count // 2
+    split = torch.cat([
+        ggml_moe_a8_vec(inputs_gpu[:half], weight_gpu, ids_gpu[:half], top_k, GGML_Q4_1, rows, half),
+        ggml_moe_a8_vec(inputs_gpu[half:], weight_gpu, ids_gpu[half:], top_k, GGML_Q4_1, rows, count-half),
+    ])
+    torch.testing.assert_close(actual, split, rtol=0, atol=0)
+    torch.testing.assert_close(actual.cpu().float(), expected, rtol=2e-2, atol=0.1)

@@ -66,6 +66,9 @@ def chunk_fwd_kernel_o(
         i_tg = i_b * NT + i_t
         bos, eos = i_b * T, i_b * T + T
 
+    # Widen the token/chunk offset before forming tensor addresses.
+    bos = bos.to(tl.int64)
+    i_tg = i_tg.to(tl.int64)
     # offset calculation
     q += (bos * Hg + i_h // (H // Hg)) * K
     k += (bos * Hg + i_h // (H // Hg)) * K
@@ -87,11 +90,11 @@ def chunk_fwd_kernel_o(
             h, (V, K), (K, 1), (i_v * BV, i_k * BK), (BV, BK), (1, 0)
         )
         # [BT, BK]
-        b_q = tl.load(p_q, boundary_check=(0, 1))
+        b_q = tl.load(p_q, boundary_check=(0, 1), padding_option="zero")
         # [BK, BT]
-        b_k = tl.load(p_k, boundary_check=(0, 1))
+        b_k = tl.load(p_k, boundary_check=(0, 1), padding_option="zero")
         # [BV, BK]
-        b_h = tl.load(p_h, boundary_check=(0, 1))
+        b_h = tl.load(p_h, boundary_check=(0, 1), padding_option="zero")
 
         # [BT, BK] @ [BK, BV] -> [BT, BV]
         b_o += tl.dot(b_q, tl.trans(b_h))
@@ -101,7 +104,7 @@ def chunk_fwd_kernel_o(
     if USE_G:
         g += bos * H + i_h
         p_g = tl.make_block_ptr(g, (T,), (H,), (i_t * BT,), (BT,), (0,))
-        b_g = tl.load(p_g, boundary_check=(0,))
+        b_g = tl.load(p_g, boundary_check=(0,), padding_option="zero")
         b_o = b_o * exp(b_g)[:, None]
         b_A = b_A * safe_exp(b_g[:, None] - b_g[None, :])
 
@@ -115,7 +118,7 @@ def chunk_fwd_kernel_o(
     p_o = tl.make_block_ptr(
         o, (T, V), (H * V, 1), (i_t * BT, i_v * BV), (BT, BV), (1, 0)
     )
-    b_v = tl.load(p_v, boundary_check=(0, 1))
+    b_v = tl.load(p_v, boundary_check=(0, 1), padding_option="zero")
 
     # to fix mma -> mma layout conversion
     # already solved by triton v3.2 or higher

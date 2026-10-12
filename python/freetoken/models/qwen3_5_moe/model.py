@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING
 
 import torch
 from freetoken.core import get_global_ctx
+from freetoken.diagnostics import FINITE_DIAGNOSTICS
 from freetoken.layers import (
     BaseOP,
     GemmaRMSNorm,
@@ -59,6 +60,12 @@ class Qwen3_5DecoderLayer(BaseOP):
 
     @nvtx_annotate("Layer_{}", layer_id_field="_layer_id")
     def forward(self, hidden: torch.Tensor, residual: torch.Tensor | None):
+        diagnostic = FINITE_DIAGNOSTICS
+        capture = diagnostic is not None and diagnostic.active
+        if capture:
+            diagnostic.set_layer(self._layer_id)
+            diagnostic.check("layer.input", {"hidden": hidden, **({"residual": residual} if residual is not None else {})})
+            norm_inputs = diagnostic.preserve({"hidden": hidden, **({"residual": residual} if residual is not None else {})})
         # Residual-stream form: fuse each residual-add into the next RMSNorm
         # (GemmaRMSNorm.forward_add_residual) so add + norm are one kernel per sublayer.
         if residual is None:
@@ -66,9 +73,21 @@ class Qwen3_5DecoderLayer(BaseOP):
             hidden = self.input_layernorm.forward(hidden)
         else:
             hidden, residual = self.input_layernorm.forward_add_residual(hidden, residual)
+        if capture:
+            diagnostic.check("layer.input_norm", {"hidden": hidden, "residual": residual}, inputs=norm_inputs)
+            mixer_inputs = diagnostic.preserve({"hidden": hidden})
         hidden = self.linear_attn.forward(hidden) if self._is_linear else self.self_attn.forward(hidden)
+        if capture:
+            diagnostic.check("layer.mixer", {"hidden": hidden}, inputs=mixer_inputs,
+                             metadata={"linear": self._is_linear})
+            norm_inputs = diagnostic.preserve({"hidden": hidden, "residual": residual})
         hidden, residual = self.post_attention_layernorm.forward_add_residual(hidden, residual)
+        if capture:
+            diagnostic.check("layer.post_norm", {"hidden": hidden, "residual": residual}, inputs=norm_inputs)
+            mlp_inputs = diagnostic.preserve({"hidden": hidden})
         hidden = self.mlp.forward(hidden)
+        if capture:
+            diagnostic.check("layer.mlp", {"hidden": hidden}, inputs=mlp_inputs)
         return hidden, residual
 
 
@@ -87,11 +106,21 @@ class Qwen3_5Model(BaseOP):
         self.norm = GemmaRMSNorm(config.hidden_size, eps=config.rms_norm_eps)
 
     def forward(self, input_ids: torch.Tensor) -> torch.Tensor:
+        diagnostic = FINITE_DIAGNOSTICS
+        capture = diagnostic is not None and diagnostic.active
         x = self.embed_tokens.forward(input_ids)
+        if capture:
+            diagnostic.check("model.embedding", {"hidden": x}, inputs={"input_ids": input_ids})
         residual: torch.Tensor | None = None
         for layer in self.layers.op_list:
             x, residual = layer.forward(x, residual)
+        if capture:
+            diagnostic.metadata.pop("layer", None)
+            diagnostic.metadata.pop("gdn", None)
+            norm_inputs = diagnostic.preserve({"hidden": x, "residual": residual})
         x, _ = self.norm.forward_add_residual(x, residual)
+        if capture:
+            diagnostic.check("model.final_norm", {"hidden": x}, inputs=norm_inputs)
         return x
 
 
@@ -121,8 +150,21 @@ class Qwen3_5MoEForCausalLM(BaseLLMModel):
             convert_qwen35_to_gguf(self, config, model_path=config.gguf_model_path)
 
     def forward(self) -> torch.Tensor:
-        output = self.model.forward(get_global_ctx().batch.input_ids)
-        return self.lm_head.forward(output)
+        batch = get_global_ctx().batch
+        diagnostic = FINITE_DIAGNOSTICS
+        if diagnostic is not None:
+            diagnostic.begin_forward(batch.phase, [
+                {"cached_len": req.cached_len, "extend_len": req.extend_len}
+                for req in batch.padded_reqs])
+        try:
+            output = self.model.forward(batch.input_ids)
+            logits = self.lm_head.forward(output)
+            if diagnostic is not None and diagnostic.active:
+                diagnostic.check("model.lm_head", {"logits": logits}, inputs={"hidden": output})
+            return logits
+        finally:
+            if diagnostic is not None:
+                diagnostic.active = False
 
 
 __all__ = ["Qwen3_5MoEForCausalLM"]

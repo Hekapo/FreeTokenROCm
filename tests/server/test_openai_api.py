@@ -7,6 +7,7 @@ from types import SimpleNamespace
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from pydantic import ValidationError
 from freetoken.message import TokenizeMsg, UserReply
 from freetoken.server.openai_api import (
     ChatCompletionRequest,
@@ -176,6 +177,34 @@ def chat_request(**kwargs) -> ChatCompletionRequest:
     }
     payload.update(kwargs)
     return ChatCompletionRequest(**payload)
+
+
+@pytest.mark.parametrize("request_type", [ChatCompletionRequest, CompletionRequest])
+@pytest.mark.parametrize("name", ["presence_penalty", "frequency_penalty"])
+@pytest.mark.parametrize("value", [float("nan"), float("inf"), -float("inf"), -2.01, 2.01])
+def test_penalties_reject_invalid_api_values(request_type, name, value):
+    payload = {"model": "unit-model", name: value}
+    if request_type is ChatCompletionRequest:
+        payload["messages"] = [{"role": "user", "content": "hi"}]
+    else:
+        payload["prompt"] = "hi"
+    with pytest.raises(ValidationError, match=name):
+        request_type(**payload)
+
+
+@pytest.mark.parametrize("chat", [True, False])
+def test_penalties_reach_the_tokenize_message(chat):
+    state = FakeState([UserReply(uid=42, incremental_output="hi", finished=True)])
+    values = dict(presence_penalty=2.0, frequency_penalty=-2.0)
+    if chat:
+        req = chat_request(**values)
+        run(handle_chat_completion(req, request=None, state=state, model_sampling={}))
+    else:
+        req = CompletionRequest(model="unit-model", prompt="hi", **values)
+        run(handle_completion(req, request=None, state=state, model_sampling={}))
+    assert state.sent is not None
+    assert state.sent.sampling_params.presence_penalty == 2.0
+    assert state.sent.sampling_params.frequency_penalty == -2.0
 
 
 def parse_sse(chunks: list[bytes]) -> list[dict | str]:

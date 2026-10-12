@@ -1,12 +1,57 @@
+import builtins
+from types import SimpleNamespace
+
 import pytest
 from tokenizers import Tokenizer, models
-from transformers.integrations import ggml as transformers_ggml
 
 import freetoken.models.gguf.tokenizer as gguf_tokenizer
 
 
 TOKENS = ["a", "<tool>", "b", "<|im_end|>", "<|endoftext|>", "[UNK]"]
 TOKEN_TYPES = [1, 4, 1, 3, 3, 2]
+
+
+@pytest.mark.parametrize("modern", [False, True])
+def test_generic_converter_supports_both_metadata_interfaces(monkeypatch, modern):
+    original_import = builtins.__import__
+    calls = []
+    backend = object()
+
+    def convert(arch, data):
+        calls.append((arch, data))
+        return backend, {}
+
+    def converter_import(name, *args, **kwargs):
+        if name == "transformers.integrations.gguf":
+            if not modern:
+                raise ModuleNotFoundError(name=name)
+            return SimpleNamespace(convert_gguf_tokenizer=convert)
+        if name == "transformers.integrations.ggml":
+            return SimpleNamespace(convert_gguf_tokenizer=convert)
+        return original_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", converter_import)
+    data = {"model": "llama", "pre": "default", "tokens": ["a"]}
+    assert gguf_tokenizer._convert_gguf_tokenizer("gemma4_text", data) == (backend, {})
+    expected = dict(data)
+    if modern:
+        expected.update(tokenizer_type="llama", pre_tokenizer_type="default")
+    assert calls == [("gemma4_text", expected)]
+    assert set(data) == {"model", "pre", "tokens"}
+
+
+def test_generic_converter_does_not_hide_missing_transitive_dependency(monkeypatch):
+    original_import = builtins.__import__
+
+    def converter_import(name, *args, **kwargs):
+        if name == "transformers.integrations.gguf":
+            raise ModuleNotFoundError(name="sentencepiece")
+        return original_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", converter_import)
+    with pytest.raises(ModuleNotFoundError) as raised:
+        gguf_tokenizer._convert_gguf_tokenizer("gemma4_text", {})
+    assert raised.value.name == "sentencepiece"
 
 
 def _backend_tokenizer():
@@ -35,7 +80,7 @@ def test_qwen_user_defined_tokens_remain_atomic_at_existing_ids(monkeypatch, arc
 
     monkeypatch.setattr(gguf_tokenizer, "load_gguf_metadata", lambda _path: _metadata())
     monkeypatch.setattr(gguf_tokenizer, "gguf_architecture", lambda _path: arch)
-    monkeypatch.setattr(transformers_ggml, "convert_gguf_tokenizer", convert_gguf_tokenizer)
+    monkeypatch.setattr(gguf_tokenizer, "_convert_gguf_tokenizer", convert_gguf_tokenizer)
 
     tokenizer = gguf_tokenizer.load_gguf_tokenizer("unused.gguf")
 
@@ -58,8 +103,8 @@ def test_qwen_token_type_length_mismatch_fails(monkeypatch):
     )
     monkeypatch.setattr(gguf_tokenizer, "gguf_architecture", lambda _path: "qwen35")
     monkeypatch.setattr(
-        transformers_ggml,
-        "convert_gguf_tokenizer",
+        gguf_tokenizer,
+        "_convert_gguf_tokenizer",
         lambda _arch, _tokenizer_dict: (_backend_tokenizer(), {}),
     )
 

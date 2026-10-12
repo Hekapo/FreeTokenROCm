@@ -423,6 +423,13 @@ class DSV4PagedKVCache(BaseKVCachePool):
                 f"{mem_GB(need)} > budget {mem_GB(budget)}; old cache kept, still serving"
             )
 
+    @classmethod
+    def rebuild_footprint(cls, config, num_pages: int, num_swa_pages: int | None) -> int:
+        from .dsv4_cost_model import _dsv4_pool_sizes, dsv4_pool_bytes
+
+        sizes = _dsv4_pool_sizes(config, num_pages + 1, num_swa_pages=num_swa_pages)
+        return dsv4_pool_bytes(sizes, config.model_config.dsv4_args, config.max_running_req + 1)
+
     def rebuild_from_config(
         self, config, num_pages: int, *, num_swa_pages: int | None = None
     ) -> None:

@@ -5,6 +5,7 @@
 from typing import Optional
 
 import torch
+from freetoken.diagnostics import FINITE_DIAGNOSTICS
 from einops import rearrange
 
 from freetoken.kernel.fla.chunk_delta_h import chunk_gated_delta_rule_fwd_h
@@ -40,9 +41,16 @@ def chunk_gated_delta_rule_fwd(
     cu_seqlens: Optional[torch.LongTensor] = None,
     chunk_indices: torch.LongTensor | None = None,
 ):
+    diagnostic = FINITE_DIAGNOSTICS
+    capture = diagnostic is not None and diagnostic.active
+    if capture:
+        diagnostic.check("gdn.chunk_inputs", {"q": q, "k": k, "v": v, "g": g, "beta": beta})
+    raw_g = g if capture else None
     g = chunk_local_cumsum(
         g, chunk_size=CHUNK_SIZE, cu_seqlens=cu_seqlens, chunk_indices=chunk_indices
     )
+    if capture:
+        diagnostic.check("gdn.cumsum", {"g": g}, inputs={"g": raw_g}, metadata={"BT": CHUNK_SIZE})
 
     # fused kkt + solve_tril + recompute_w_u
     w, u, A = chunk_gated_delta_rule_fwd_intra(
@@ -54,6 +62,10 @@ def chunk_gated_delta_rule_fwd(
         chunk_indices=chunk_indices,
     )
 
+    if capture:
+        states = diagnostic.selected_states(initial_state, initial_state_indices)
+        diagnostic.check("gdn.state_input", states)
+        state_before = diagnostic.preserve(states)
     h, v_new = chunk_gated_delta_rule_fwd_h(
         k=k,
         w=w,
@@ -64,6 +76,13 @@ def chunk_gated_delta_rule_fwd(
         cu_seqlens=cu_seqlens,
         chunk_indices=chunk_indices,
     )
+    if capture:
+        from freetoken.kernel.fla.chunk_delta_h import GDN_CHUNK_H_BV, GDN_CHUNK_H_NUM_WARPS, GDN_CHUNK_H_NUM_STAGES
+        diagnostic.check("gdn.state_update", {"h": h, "v_new": v_new, **diagnostic.selected_states(initial_state, initial_state_indices)},
+                         inputs={"k": k, "w": w, "u": u, "g": g, **state_before},
+                         metadata={"BT": CHUNK_SIZE, "BV": GDN_CHUNK_H_BV,
+                                   "num_warps": GDN_CHUNK_H_NUM_WARPS, "num_stages": GDN_CHUNK_H_NUM_STAGES,
+                                   "state_layout": "slot,H,V,K"})
     o = chunk_fwd_o(
         q=q,
         k=k,
@@ -73,6 +92,9 @@ def chunk_gated_delta_rule_fwd(
         scale=scale,
         cu_seqlens=cu_seqlens,
     )
+    if capture:
+        diagnostic.check("gdn.chunk_output", {"o": o}, inputs={"q": q, "k": k, "v_new": v_new, "h": h, "g": g},
+                         metadata={"BT": CHUNK_SIZE, "BK": 128, "BV": 64, "num_warps": 4, "num_stages": 2})
     if SUPPRESS_LEVEL < 3:
         return g, o, A, None, h, None
     elif SUPPRESS_LEVEL >= 3:
@@ -103,6 +125,8 @@ class ChunkGatedDeltaRuleFunction(torch.autograd.Function):
         if use_qk_l2norm_in_kernel:
             q = l2norm_fwd(q)
             k = l2norm_fwd(k)
+            if FINITE_DIAGNOSTICS is not None and FINITE_DIAGNOSTICS.active:
+                FINITE_DIAGNOSTICS.check("gdn.l2norm", {"q": q, "k": k}, inputs={"q": q_orig, "k": k_orig})
 
         chunk_indices = (
             prepare_chunk_indices(cu_seqlens, CHUNK_SIZE)

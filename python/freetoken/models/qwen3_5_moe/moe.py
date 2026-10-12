@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 import torch
+from freetoken.diagnostics import FINITE_DIAGNOSTICS
 from freetoken.layers import (
     BaseOP,
     LinearColParallelMerged,
@@ -70,16 +71,33 @@ class Qwen3_5MoE(BaseOP):
         self.shared_expert_gate = LinearReplicated(config.hidden_size, 1, has_bias=False)
 
     def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
+        diagnostic = FINITE_DIAGNOSTICS
+        capture = diagnostic is not None and diagnostic.active
         num_tokens, hidden_dim = hidden_states.shape
         hidden_states = hidden_states.view(-1, hidden_dim)
         # Compute the router + shared expert BEFORE the routed experts: the fused MoE
         # kernel may write into ``hidden_states`` in place, which would corrupt the
         # shared expert's input (HF also evaluates the shared expert first).
         router_logits = self.gate.forward(hidden_states)
+        if capture:
+            diagnostic.check("moe.router", {"logits": router_logits}, inputs={"hidden": hidden_states})
         shared = self.shared_expert.forward(hidden_states)
-        shared = shared * torch.sigmoid(self.shared_expert_gate.forward(hidden_states))
+        if capture:
+            diagnostic.check("moe.shared_expert", {"shared": shared}, inputs={"hidden": hidden_states})
+        gate = self.shared_expert_gate.forward(hidden_states)
+        if capture:
+            diagnostic.check("moe.shared_gate", {"gate": gate}, inputs={"hidden": hidden_states})
+        shared = shared * torch.sigmoid(gate)
+        if capture:
+            diagnostic.check("moe.gated_shared", {"shared": shared}, inputs={"gate": gate})
+            routed_inputs = diagnostic.preserve({"hidden": hidden_states, "router_logits": router_logits})
         routed = self.experts.forward(hidden_states=hidden_states, router_logits=router_logits)
-        return (routed + shared).view(num_tokens, hidden_dim)
+        if capture:
+            diagnostic.check("moe.routed_experts", {"routed": routed}, inputs=routed_inputs)
+        out = (routed + shared).view(num_tokens, hidden_dim)
+        if capture:
+            diagnostic.check("moe.combine", {"out": out}, inputs={"routed": routed, "shared": shared})
+        return out
 
 
 __all__ = ["Qwen3_5MoE", "Qwen3_5DenseMLP"]

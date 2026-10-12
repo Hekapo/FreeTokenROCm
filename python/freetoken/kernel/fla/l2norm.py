@@ -28,7 +28,7 @@ def l2norm_fwd_kernel1(
     BD: tl.constexpr,
     eps,
 ):
-    i_t = tl.program_id(0)
+    i_t = tl.program_id(0).to(tl.int64)
     x += i_t * D
     y += i_t * D
     # Compute mean and variance
@@ -62,8 +62,9 @@ def l2norm_fwd_kernel(
     BD: tl.constexpr,
 ):
     i_t = tl.program_id(0)
+    # Reduction operands outside D must be zero, not undefined (possibly NaN).
     p_x = tl.make_block_ptr(x, (T, D), (D, 1), (i_t * BT, 0), (BT, BD), (1, 0))
-    b_x = tl.load(p_x, boundary_check=(0, 1)).to(tl.float32)
+    b_x = tl.load(p_x, boundary_check=(0, 1), padding_option="zero").to(tl.float32)
     b_var = tl.sum(b_x * b_x, axis=1)
     b_y = b_x / tl.sqrt(b_var + eps)[:, None]
     p_y = tl.make_block_ptr(y, (T, D), (D, 1), (i_t * BT, 0), (BT, BD), (1, 0))

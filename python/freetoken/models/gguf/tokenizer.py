@@ -12,11 +12,8 @@ from typing import Any
 
 from .reader import gguf_architecture, load_gguf_metadata
 
-# GGUF architecture -> transformers GGUF tokenizer-converter key. transformers keys its
-# converters by *its own* model_type, not by the GGUF arch string, so an arch it has never
-# heard of raises KeyError inside convert_gguf_tokenizer. qwen35moe is a GPT2-style BPE
-# with merges (tokenizer.ggml.model == "gpt2", pre == "qwen35"), which the qwen2 converter
-# handles; there is no qwen3.5-specific converter and it would be the same BPE anyway.
+# Keep the validated Qwen2 BPE behavior for the existing Qwen GGUF profile.
+# Transformers 5.19's generic GGUF converter changes normalization and AddedTokens.
 _TOKENIZER_ARCH = {"gemma4": "gemma4_text", "qwen35moe": "qwen2", "qwen35": "qwen2"}
 
 # Per-arch chat/stop tokens, in preference order: the first one present in the vocab
@@ -32,9 +29,33 @@ _STOP_TOKENS: dict[str, tuple[str, ...]] = {
 }
 
 
+def _convert_gguf_tokenizer(architecture: str, tokenizer_dict: dict):
+    if architecture == "qwen2":
+        from transformers import AddedToken, Qwen2Tokenizer
+
+        vocab = {token: index for index, token in enumerate(tokenizer_dict["tokens"])}
+        merges = [tuple(merge.split(" ")) for merge in tokenizer_dict["merges"]]
+        backend = Qwen2Tokenizer(vocab=vocab, merges=merges).backend_tokenizer
+        backend.add_special_tokens([
+            AddedToken(token, normalized=False, special=True)
+            for token in ("<|endoftext|>", "<|im_start|>", "<|im_end|>") if token in vocab
+        ])
+        return backend, {}
+    try:
+        from transformers.integrations.gguf import convert_gguf_tokenizer
+    except ModuleNotFoundError as exc:
+        if exc.name != "transformers.integrations.gguf":
+            raise
+        from transformers.integrations.ggml import convert_gguf_tokenizer
+    else:
+        tokenizer_dict = dict(tokenizer_dict)
+        tokenizer_dict["tokenizer_type"] = tokenizer_dict.get("model")
+        tokenizer_dict["pre_tokenizer_type"] = tokenizer_dict.get("pre")
+    return convert_gguf_tokenizer(architecture, tokenizer_dict)
+
+
 def load_gguf_tokenizer(model_path: str):
     from transformers import AddedToken, PreTrainedTokenizerFast
-    from transformers.integrations.ggml import convert_gguf_tokenizer
 
     meta = load_gguf_metadata(model_path)
     arch = gguf_architecture(model_path)
@@ -44,7 +65,7 @@ def load_gguf_tokenizer(model_path: str):
         for k, v in meta.items()
         if k.startswith("tokenizer.ggml.")
     }
-    fast, _extra = convert_gguf_tokenizer(conv_arch, tok_dict)
+    fast, _extra = _convert_gguf_tokenizer(conv_arch, tok_dict)
 
     tokens = tok_dict["tokens"]
     if arch in ("qwen35", "qwen35moe"):
