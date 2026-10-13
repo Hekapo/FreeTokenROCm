@@ -237,3 +237,4 @@ benchmarks/cross_framework
 
 # Local settings, managed service state and caches for the Windows 64K launcher
 /.local/windows-rocm64k/
+/.local/windows-rocm1010/

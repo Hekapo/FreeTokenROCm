@@ -1,0 +1,106 @@
+{
+  "schema": 4,
+  "mode": "repository-64k-rocm1010-20261013",
+  "profile": "64k",
+  "capacity": 65536,
+  "kv_capacity": 65536,
+  "max_running_requests": 1,
+  "cache_stable_triton_knob": true,
+  "user_policy": "adopt short-qualified rocm1010 with workaround; observe under load",
+  "accepted_engine_commit": "d315247d8abc2ce4340354f0abe77374296258ad",
+  "historical_release_sha256": "a6fb78da8f25d0beb8ee057415aac34f53b856cb7bad7b7ee7af70091a3289db",
+  "repository_launcher_model_smoke_performed": true,
+  "runtime_hashes": [
+    {
+      "path": "service64k.ps1",
+      "sha256": "97ce777f80afb594534b0c29f8f84456ce279ac684715b95d4f48d378e1f96f8"
+    },
+    {
+      "path": "service64k_lifecycle.ps1",
+      "sha256": "0800385740342e5a858d5f7f3b490436ba51f9db913d6d7240d3842013d16986"
+    },
+    {
+      "path": "service64k_paths.ps1",
+      "sha256": "57ca72684818613a0ba6783b955313f5870fe8f814f889e32acfdbb66ef6bc4e"
+    },
+    {
+      "path": "service64k_release.ps1",
+      "sha256": "efcd89e51e1e855f0fcf00f5d3236371138649fe0389d026ff869ad1a95e7057"
+    },
+    {
+      "path": "launch64k.ps1",
+      "sha256": "d643b6735e0fb8e6ad1acde86a865f4ba87d110ebe082def22f0ea324a428f0f"
+    },
+    {
+      "path": "service38_safety.ps1",
+      "sha256": "e2b5620ea8b206f5e3b70a6690acea9c2816e2f268f0256f0d1d3dab86ee42c1"
+    },
+    {
+      "path": "service38_probes.ps1",
+      "sha256": "51d42a24f32a8751438ec077249c33817cdc32cdbf4e4a9900c8b2d4d3f54adf"
+    },
+    {
+      "path": "service38_probe_native.cs",
+      "sha256": "f05c52644b6b363c994f16571fed874e1d0a73e19d224a28c7f2441db88a9111"
+    },
+    {
+      "path": "service38_gpu_identity.cs",
+      "sha256": "a4ba83ea54be1140628b7f96fe6d0c0009a08d4bf17f5b6aa8534ab371c1eedf"
+    },
+    {
+      "path": "query_service38.ps1",
+      "sha256": "eb7f75d4b9eb52be454a7f93437d019bd68892e9e809c852ab05d29eacc7827e"
+    },
+    {
+      "path": "observe_service38.ps1",
+      "sha256": "ec01b870396e2517175e11faf9191807e24207fe33abf09d47b18960911d58c7"
+    },
+    {
+      "path": "stable_triton_knob.py",
+      "sha256": "58cc3684ea1238aca956dc8abf933b1afe0b95c2aab05afed9667c71ac2a4b8e"
+    },
+    {
+      "path": "cached_stats_launcher.py",
+      "sha256": "56528fc9439775e7b9bf9d7cfb25a8c041e0043530811e7c51cec5c5418a8a54"
+    },
+    {
+      "path": "reviewed_source.py",
+      "sha256": "eff1aa46f5e6afc271bd5615742455537850eb679cc0f3465d40e8b9ce5f08f3"
+    },
+    {
+      "path": "profile.json",
+      "sha256": "806e8d0718cb8e1a405dd1af8fb9b73c66814dd59680d737c403f1ac95d1ac84"
+    },
+    {
+      "path": "quarantine-history.json",
+      "sha256": "24a46ae2dbb09754dc3be67f84eff311b71984a88c3db445a12d6270bb2be3eb"
+    },
+    {
+      "path": "accepted-source.rocm1010.json",
+      "sha256": "5e87c47dd34e9f287a7f48c3ba68f4f0229080c2df6658156b41c697e124d7fd"
+    },
+    {
+      "path": "rocm1010/compiler_safety.py",
+      "sha256": "c30250abfaa0ee14e744e84628458d0f423d82f63759525c5be0591fbd63b19d"
+    },
+    {
+      "path": "rocm1010/sitecustomize.py",
+      "sha256": "d29787e4678121e68bd7bc2e38f07377abd1785850d0491d0d0a8ddc22b1dfcf"
+    }
+  ],
+  "evidence_hashes": [
+    {
+      "kind": "source",
+      "path": "evidence/source.json",
+      "sha256": "890c62a2545de6c6a10bdcafcc4522dcaa37bcebaf087ed9fcc62920134dd0c2"
+    },
+    {
+      "kind": "short",
+      "path": "evidence/rocm1010-short.json",
+      "sha256": "96bdfe7f8590975fee8c71ba38f428ec6073b7fa7ee327149c6635a825d76cb6"
+    }
+  ],
+  "runtime": "rocm1010",
+  "requires_range_safety": true,
+  "qualification_scope": "short64k; long64k not inherited from rocm1000"
+}

@@ -99,12 +99,103 @@ def test_changed_native_binary_is_rejected(source):
         CHECKER.verify(repo, state, venv)
 
 
+def test_rocm1010_source_requires_matching_environment(source):
+    repo, state, venv = source
+    qualification = json.loads((ROOT / 'constraints/windows-rocm1010-qualification-20261012.json').read_text())
+    state['packages'] = qualification['packages']
+    distributions = [SimpleNamespace(metadata={'Name': name}, version=version)
+                     for name, version in state['packages'].items()]
+    with mock.patch.object(CHECKER.metadata, 'distributions', return_value=distributions):
+        assert CHECKER.verify(repo, state, venv, runtime='rocm1010')['gpu_runtime_loaded'] is False
+        with pytest.raises(ValueError, match='package profile'):
+            CHECKER.verify(repo, state, venv, runtime='rocm1000')
+
+
+def test_old_packages_cannot_be_selected_as_rocm1010(source):
+    repo, state, venv = source
+    with pytest.raises(ValueError, match='package profile'):
+        CHECKER.verify(repo, state, venv, runtime='rocm1010')
+
+
 def run_ps(code, payload=None, module=MODULE):
     env = dict(os.environ, FT_TEST_MODULE=str(module), FT_TEST_PAYLOAD=json.dumps(payload), FT_TEST_PYTHON=sys.executable)
     result = subprocess.run([PWSH, "-NoProfile", "-NonInteractive", "-Command", code], env=env,
                             capture_output=True, text=True, encoding="utf-8", timeout=30)
     assert result.returncode == 0, result.stderr + result.stdout
     return json.loads(result.stdout)
+
+
+@WINDOWS
+@pytest.mark.parametrize('schema,runtime', [(1, None), (2, 'rocm1000'), (2, 'rocm1010')])
+def test_configuration_selects_pinned_runtime(tmp_path, schema, runtime):
+    payload = {'schema': schema, 'venv_root': str(tmp_path / 'venv'),
+               'model_path': str(tmp_path / 'model.gguf'), 'state_root': str(tmp_path / 'state'),
+               'msvc_root': str(tmp_path / 'msvc'), 'windows_sdk_root': str(tmp_path / 'sdk')}
+    if runtime:
+        payload['runtime'] = runtime
+    result = run_ps(r'''
+    $source64k=$env:FT_TEST_MODULE; $labRoot=$env:FT_TEST_MODULE
+    . (Join-Path $env:FT_TEST_MODULE 'service64k_paths.ps1')
+    $config=Resolve-Service64kConfig ($env:FT_TEST_PAYLOAD | ConvertFrom-Json)
+    @{runtime=$config.runtime;schema=$config.schema} | ConvertTo-Json
+    ''', payload)
+    assert result['runtime'] == (runtime or 'rocm1000') and result['schema'] == 2
+
+
+@WINDOWS
+@pytest.mark.parametrize('runtime', ['rocm1100', '', 'ROCM1010'])
+def test_unknown_runtime_configuration_is_rejected(tmp_path, runtime):
+    payload = {'schema': 2, 'runtime': runtime, 'venv_root': str(tmp_path / 'venv'),
+               'model_path': str(tmp_path / 'model.gguf'), 'state_root': str(tmp_path / 'state'),
+               'msvc_root': str(tmp_path / 'msvc'), 'windows_sdk_root': str(tmp_path / 'sdk')}
+    result = run_ps(r'''
+    $source64k=$env:FT_TEST_MODULE; $labRoot=$env:FT_TEST_MODULE
+    . (Join-Path $env:FT_TEST_MODULE 'service64k_paths.ps1')
+    try {$null=Resolve-Service64kConfig ($env:FT_TEST_PAYLOAD | ConvertFrom-Json); @{allowed=$true} | ConvertTo-Json}
+    catch {@{allowed=$false} | ConvertTo-Json}
+    ''', payload)
+    assert result['allowed'] is False
+
+
+@WINDOWS
+@pytest.mark.parametrize('length,allowed', [(40, True), (180, False)])
+def test_jit_output_path_is_checked_before_model_start(length, allowed):
+    result = run_ps(r'''
+    . (Join-Path $env:FT_TEST_MODULE 'service64k_paths.ps1')
+    $root='C:\' + ('x' * ($env:FT_TEST_PAYLOAD | ConvertFrom-Json))
+    try {Assert-Service64kJitPaths $root; @{allowed=$true} | ConvertTo-Json}
+    catch {@{allowed=$false} | ConvertTo-Json}
+    ''', length)
+    assert result['allowed'] is allowed
+
+
+@WINDOWS
+@pytest.mark.parametrize('case', ['pass', 'wrong-capacity', 'wrong-content', 'no-stop', 'late-hook',
+                                 'wrong-native', 'wrong-hook', 'weak-headroom', 'wrong-scope'])
+def test_rocm1010_proof_preserves_numerical_and_stop_contracts(case):
+    proof = json.loads((MODULE / 'evidence/rocm1010-short.json').read_text())
+    if case == 'wrong-capacity':
+        proof['live_kv']['total_pages'] = 8192
+    elif case == 'wrong-content':
+        proof['smoke']['content_sha256'] = '0' * 64
+    elif case == 'no-stop':
+        proof['stop']['listeners'] = 1
+    elif case == 'late-hook':
+        proof['bootstrap_processes'][0]['before_gpu_initialization'] = False
+    elif case == 'wrong-native':
+        proof['native_files']['torch/lib/torch_hip.dll'] = '0' * 64
+    elif case == 'wrong-hook':
+        proof['compiler_hook_sha256'] = '0' * 64
+    elif case == 'weak-headroom':
+        proof['resources']['sampled_minimum_gib']['free_commit_gib'] = 3.9
+    elif case == 'wrong-scope':
+        proof['long64k_run'] = True
+    result = run_ps(r'''
+    . (Join-Path $env:FT_TEST_MODULE 'service64k_release.ps1')
+    try {Assert-Service64kRocm1010Proof ($env:FT_TEST_PAYLOAD | ConvertFrom-Json); @{allowed=$true} | ConvertTo-Json}
+    catch {@{allowed=$false} | ConvertTo-Json}
+    ''', proof)
+    assert result['allowed'] is (case == 'pass')
 
 
 @WINDOWS

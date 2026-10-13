@@ -6,30 +6,63 @@ profile on `http://127.0.0.1:1919` with context and KV capacity 65536.
 
 ## Requirements and local configuration
 
-Use Windows, PowerShell 7, and the RX 9070 XT / gfx1201. Keep the qualified
-environment: CPython 3.12.0, AMD Torch 2.13.0+rocm10.0.0, ROCm SDK 10.0.0,
-Triton Windows 3.8.0.post28, and the complete recorded set of 74 packages.
-The [dependency constraints](../constraints/windows-rocm1000-pydeps-20261012.txt)
-and [installation guide](install-windows-rocm10.md) describe that environment.
-ROCm 10.1/post29 did not pass compiler qualification and is not selected here.
+Use Windows, PowerShell 7, CPython3.12.0 and the RX9070XT / gfx1201.
+Configuration schema2 records the chosen native runtime:
+
+| Runtime | AMD Torch | SDK | Triton Windows |
+|---|---|---|---|
+| `rocm1010` (new configurations) | 2.14.0+rocm10.1.0 | 10.1.0 | 3.8.0.post29 |
+| `rocm1000` (rollback) | 2.13.0+rocm10.0.0 | 10.0.0 | 3.8.0.post28 |
+
+Both retain the recorded74 packages. Legacy schema1 configurations select
+`rocm1000`; reading them does not rewrite the file. `-Runtime` is accepted only
+by `Configure`, and later commands use the persisted choice.
+The [10.1 constraints](../constraints/windows-rocm1010-candidate-20261012.txt)
+and [upgrade report](rocm1010-upgrade-20261012.md) record its exact environment.
+The [10.0 constraints](../constraints/windows-rocm1000-pydeps-20261012.txt)
+and [installation guide](install-windows-rocm10.md) describe the rollback environment.
+
+ROCm10.1 requires the reviewed range-fold compiler workaround. The controller
+verifies its SHA256 and the short64K/operator/Stop proof. The bootstrap installs
+the hook separately before GPU initialization in every spawned kernel process;
+failure terminates that process. Installed Triton files are unchanged. Old10.0
+long64K evidence is not treated as a qualification of the new native stack.
 
 From the checkout root, configure the paths to the existing environment and
 model. The model and environment stay in their current locations.
 
 ```powershell
 pwsh -NoProfile -File .\scripts\windows-rocm64k\service64k.ps1 -Action Configure `
+  -Runtime rocm1010 `
   -VenvRoot 'D:\FreeToken\venv' `
-  -ModelPath 'D:\Models\Qwen_Qwen3.6-35B-A3B-Q4_1.gguf'
+  -ModelPath 'D:\Models\Qwen_Qwen3.6-35B-A3B-Q4_1.gguf' `
+  -StateRoot 'D:\FT-state\rocm1010'
 ```
 
 The command checks the environment and creates
 `.local/windows-rocm64k/config.json`. This directory is ignored by Git and
-contains local settings, service state, run logs, and caches. The default build
+contains local settings; the selected state root holds service state, run logs
+and caches. Use a short state root: the controller rejects a model JIT DLL path
+of260 or more characters before loading the model. The default build
 paths are Visual Studio 2022 Build Tools / MSVC 14.44.35207 and Windows SDK
 10.0.26100.0. `Configure` accepts `-MsvcRoot`, `-WindowsSdkRoot`, `-StateRoot`,
 and `-ConfigFile` for different directory locations. Relative paths are resolved
 against the checkout root. Pass `-ConfigFile` to subsequent commands when using
 a nondefault configuration file. An existing configuration is preserved.
+
+On this workspace the default configuration now selects `rocm1010`, state in
+`C:\Users\Iskandar\FreeTokenROCm\.local\service64k-rocm1010`. The original
+configuration is preserved as `config.before-rocm1010-20261013.json`, and
+`config-rocm1000.json` uses the old environment with a separate short state root.
+To use the rollback configuration, first Stop the active service, then:
+
+```powershell
+pwsh -NoProfile -File .\scripts\windows-rocm64k\service64k.ps1 -Action Start `
+  -ConfigFile .local/windows-rocm64k/config-rocm1000.json
+```
+
+Use the same `-ConfigFile` for its Status/Stop. Both runtimes share the existing
+mutex, port1919, process identity checks, resource observer and Stop implementation.
 
 ## Daily commands
 

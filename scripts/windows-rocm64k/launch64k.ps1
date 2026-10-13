@@ -15,7 +15,8 @@ param(
     [Parameter(Mandatory)][string]$MsvcRoot,
     [Parameter(Mandatory)][string]$WindowsSdkRoot,
     [ValidateSet('10.0.26100.0')][string]$WindowsSdkVersion,
-    [switch]$PreflightOnly
+    [switch]$PreflightOnly,
+    [ValidateSet('rocm1000','rocm1010')][string]$Runtime = 'rocm1000'
 )
 $ErrorActionPreference = 'Stop'
 $stopRequestFile = Join-Path $StateRoot 'stop-request.json'
@@ -32,12 +33,13 @@ $FrontendGenerationLimit = 1
 $source64k = $Src
 $labRoot = $PSScriptRoot
 $venvRoot = Split-Path -Parent (Split-Path -Parent $Python)
+$runtimeName = $Runtime
 . (Join-Path $PSScriptRoot 'service38_safety.ps1')
 . (Join-Path $PSScriptRoot 'service64k_paths.ps1')
 . (Join-Path $PSScriptRoot 'service64k_release.ps1')
 if ([IO.Path]::GetFullPath($TritonSite) -ine (Join-Path $venvRoot 'Lib\site-packages') -or
     [IO.Path]::GetFullPath($SdkDevel) -ine (Join-Path $venvRoot 'Lib\site-packages\_rocm_sdk_devel') -or
-    [IO.Path]::GetFullPath($StateManifest) -ine (Join-Path $PSScriptRoot 'accepted-source.json') -or
+    [IO.Path]::GetFullPath($StateManifest) -ine (Get-Service64kSourceManifest) -or
     [IO.Path]::GetFullPath($ResourceGuard) -ine (Join-Path $RunDir 'resource-guard.json') -or
     (-not $PreflightOnly -and [IO.Path]::GetFullPath($PointerFile) -ine (Join-Path $StateRoot 'active-service.json')) -or
     -not [IO.Path]::GetFullPath($RunDir).StartsWith(
@@ -46,7 +48,7 @@ if ([IO.Path]::GetFullPath($TritonSite) -ine (Join-Path $venvRoot 'Lib\site-pack
 }
 $null = Read-Service38WorkingRelease
 Assert-Service64kLocalPaths ([pscustomobject]@{
-    venv_root=$venvRoot; model_path=$ModelPath; msvc_root=$MsvcRoot; windows_sdk_root=$WindowsSdkRoot
+    venv_root=$venvRoot; model_path=$ModelPath; msvc_root=$MsvcRoot; windows_sdk_root=$WindowsSdkRoot; state_root=$StateRoot
 })
 $fingerprintScript = Join-Path $PSScriptRoot 'reviewed_source.py'
 $env:FREETOKEN_TRITON_CACHE_AMD_KNOB = '0'
@@ -81,6 +83,14 @@ $env:TVM_FFI_CACHE_DIR = "$RunDir\tvm-ffi-cache"; $env:TRITON_CACHE_DIR = "$RunD
 $env:XDG_CACHE_HOME = "$RunDir\xdg-cache"; $env:TEMP = "$RunDir\temp"; $env:TMP = "$RunDir\temp"; $env:PYTHONPYCACHEPREFIX = "$RunDir\pycache"
 $env:HF_HOME = "$RunDir\hf-home"; $env:MIOPEN_USER_DB_PATH = "$RunDir\miopen-db"; $env:MIOPEN_CUSTOM_CACHE_DIR = "$RunDir\miopen-cache"; $env:HIP_CACHE_DIR = "$RunDir\hip-cache"
 $env:PYTHONPATH = "$TritonSite;$Src\python"
+foreach ($name in @('FT_ROCM1010_RANGE_SAFE','FT_ROCM1010_INIT_OUTPUT')) {
+    Remove-Item -LiteralPath ('Env:' + $name) -ErrorAction SilentlyContinue
+}
+if ($Runtime -eq 'rocm1010') {
+    $env:PYTHONPATH = "$PSScriptRoot\rocm1010;$PSScriptRoot;$TritonSite;$Src\python"
+    $env:FT_ROCM1010_RANGE_SAFE = '1'
+    $env:FT_ROCM1010_INIT_OUTPUT = Join-Path $RunDir 'compiler-init.jsonl'
+}
 $tritonProbe = @(& $Python -c 'import triton; print(triton.__version__); print(triton.__file__)')
 $resolvedTritonSite = (Resolve-Path -LiteralPath $TritonSite).Path
 if ($LASTEXITCODE -ne 0 -or $tritonProbe.Count -lt 2 -or $tritonProbe[0] -ne $ExpectedTritonVersion -or
@@ -119,7 +129,8 @@ foreach ($phase in @('startup','runtime','recovery')) {
     }
 }
 $result = [ordered]@{
-    label=$Label; src=$Src; head=(& git -C $Src rev-parse HEAD); port=$Port; python=$Python;
+    label=$Label; runtime=$Runtime; compiler_workaround=($Runtime -eq 'rocm1010');
+    src=$Src; head=(& git -C $Src rev-parse HEAD); port=$Port; python=$Python;
     model_path=$ModelPath; triton_site=$resolvedTritonSite; triton_version=$tritonProbe[0];
     args=$serveArgs; state_manifest=$StateManifest;
     launcher_sha256=(Get-FileHash -LiteralPath $MyInvocation.MyCommand.Path).Hash.ToLowerInvariant()
@@ -226,6 +237,7 @@ if ($KeepRunning -and $healthy) {
             Write-Service38Json $PointerFile ([ordered]@{
                 state_file = $stateFile; started_at = $state.started_at; recovery_state = $state })
         }
+        Write-Service38Json (Join-Path $RunDir 'startup-result.json') $result
         $keepOwned = $true
         Write-Output "service running: pid=$($proc.Id) port=$Port Triton=$($tritonProbe[0])"
         return

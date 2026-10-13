@@ -284,7 +284,7 @@ FreeToken-Kai, freetoken-rdna3, ZLUDA, nix-freetoken, full AITER/FlyDSL, сто�
 | Этап2 | Завершён: 4 GPU operator contracts, diagnostic3/3 + ordinary3/3, оба cleanStop | Данные и откаты в отчёте этапа2 |
 | Этап3 | Завершён для текущего профиля: CPU243passed, tokenizer и live resize/API3/3, cleanStop;641 неприменим | Артефакты и границы в отчёте этапа3 |
 | Этап4 | Завершён: отдельный74-package candidate, tokenizer/API parity, CPU259+3 и model3/3, cleanStop | Контроль сохранён; отчёт и constraints записаны |
-| Этап5 | Candidate подготовлен; native/CPU gates пройдены, compiler gate failed | Отдельно квалифицировать compiler fix; control остаётся рабочим |
+| Этап5 | Исходный compiler gate failed; явный обход прошёл CPU/IR и выбранные GPU gates | Q4_1/attention и model/Stop ещё нужны; control остаётся рабочим |
 | Этап6.1 | Portable knob реализован; CPU28passed, model9/9, cleanStop; новый gain не подтверждён | Сохранить default off; не повторять серию ради шума |
 | Этап6.2 | Opt-in короткий Q4_1 prefill принят: CPU42 + GPU2 + model9/9, cleanStop; TTFT−69,81% | Default0; обычный overlap profile и длительная эксплуатация новой опции не квалифицированы |
 | Этап7 | Отложенная optional функция | Не блокирует выпуск текущей итерации |
@@ -302,6 +302,39 @@ FreeToken-Kai, freetoken-rdna3, ZLUDA, nix-freetoken, full AITER/FlyDSL, сто�
 **Запись 12.10.2026, этап4:** отдельный candidate с Transformers5.19/Hub1.33/FastAPI0.143/Pydantic2.14.1/core2.50.1 и OTel API1.44 проверен. Native AMD stack10.0 прежний; tokenizer/API contracts совпали с control после source compatibility adaptation, ModelScope optional. CPU259+3passed, model3/3passed, чистый Stop. Constraints и артефакты в [отчёте этапа4](integration-research-stage4-20261012.md).
 
 **Запись 12.10.2026, этап5:** отдельный AMD10.1/Torch2.14/Triton post29 candidate подготовлен; exact artifacts, metadata/provenance и native build/load проверены, CPU298passed. Compiler неправильно сворачивает histogram и два loop comparisons, поэтому runtime acceptance не пройдена и model не запускался. Остаёмся на control10.0/post28. Подробности в [отчёте этапа5](integration-research-stage5-20261012.md).
+
+**Продолжение 12.10.2026, обновление библиотек:** в ветке `integration/rocm1010-upgrade`
+явный штатный Triton compiler hook пропускает ошибочный range-fold pass, не меняя
+установленные файлы и отделяя compilation cache. CPU12passed, четыре compile-only
+reproducers до/после, пять GPU reference checks и шесть project GPU tests прошли.
+GPU-диагностика на прежних ОС/драйвере была отдельно разрешена пользователем;
+model/long64K не запускались, обычный profile не переключён. Остались Q4_1/attention,
+model/Stop, решение о host support и полезный результат. Подробности в
+[новом отчёте](rocm1010-upgrade-20261012.md).
+
+**Продолжение обновления, Q4_1/attention и short64K:** GPU3passed,
+bootstrap CPU3passed, smoke client CPU4passed. Отдельный runtime с
+Torch2.14/SDK10.1/post29 и compiler workaround выполнил readiness и один
+request24/391tokens при live context/KV65536; reference hash совпал,
+decode36.731TPS/TTFT1.786651s, Stop чистый. Minima RAM23.544/commit8.909/VRAM6.638GiB.
+Первый model startup завершился LNK1104 из-за DLL path289characters;
+CPU linker control289fail/119pass подтвердил причину, короткий state/cache
+путь исправил повтор. История сбоя сохранена. Разовое пользовательское
+разрешение на меньший commit применено только к пробному старту (42GiB),
+после Stop возвращено45GiB. Полной серии/long64K не было; обычный profile
+10.0/post28 прежний, изолированное ускорение не подтверждено. Подробности и
+hashes в [отчёте](rocm1010-upgrade-20261012.md) и qualification manifest schema2.
+
+**Применение13.10.2026:** штатный общий64K controller поддерживает pinned10.0/10.1,
+default working config переведён на10.1 по запросу пользователя. Compiler
+workaround обязателен, bootstrap до GPU init сохранён. CPU33+9passed,
+Configure/Verify обоих окружений прошли. Actual short24/391 и load16384/292
+валидны, KV released, Stop чистый; decode40.783/34.493TPS, load TTFT23.692341s.
+Minima RAM24.918/commit13.577/VRAM6.620GiB. Две ошибки harness (CRLF и неверный
+эталон391 вместо292) разобраны без изменения исходных failed reports;
+post-load short не выполнялся. Новая full series/long64K отсутствуют,
+performance gain не заявлен. [Profile](../constraints/windows-rocm1010-profile-20261013.json),
+[запуск](run-windows-rocm64k.md), [отчёт](rocm1010-upgrade-20261012.md).
 
 **Запись 12.10.2026, этап6.1:** public assignment сохраняет effective bool AMD buffer ops при opt-in и первом kernel import, unsupported runtime/descriptor пропускается, installed Triton не меняется. CPU28passed; main/off/on9успешных requests, identical292-token outputs, cleanStop. ON/OFF−0,16%; default off, новый speed gain не заявлен. Minima RAM25,261/commit13,127/local VRAM6,888GiB. Setup failures и восстановление стенда сохранены отдельно от результатов. [Отчёт этапа6.1](integration-research-stage6-20261012.md).
 

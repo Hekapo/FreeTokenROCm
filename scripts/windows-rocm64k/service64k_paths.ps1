@@ -15,12 +15,18 @@ function Read-Service64kConfig([string]$Path) {
 function Resolve-Service64kConfig($Value) {
     $value = $Value
     $required = @('schema','venv_root','model_path','state_root','msvc_root','windows_sdk_root')
-    if ($value.schema -ne 1 -or @($value.PSObject.Properties).Count -ne $required.Count) {
+    if ($value.schema -eq 2) { $required += 'runtime' }
+    if ($value.schema -notin @(1,2) -or @($value.PSObject.Properties).Count -ne $required.Count) {
         throw 'Unexpected local 64K configuration'
     }
     foreach ($name in $required) {
         if (-not $value.PSObject.Properties[$name]) { throw "Missing configuration field: $name" }
     }
+    if ($value.schema -eq 1) {
+        $value | Add-Member -NotePropertyName runtime -NotePropertyValue 'rocm1000'
+        $value.schema = 2
+    }
+    if ($value.runtime -cnotin @('rocm1000','rocm1010')) { throw 'Unknown pinned 64K runtime' }
     foreach ($name in @('venv_root','model_path','state_root','msvc_root','windows_sdk_root')) {
         $value.$name = Resolve-Service64kPath $value.$name
     }
@@ -32,7 +38,27 @@ function Resolve-Service64kConfig($Value) {
     return $value
 }
 
+function Get-Service64kRuntime {
+    if (-not $runtimeName) { return 'rocm1000' }
+    if ($runtimeName -cnotin @('rocm1000','rocm1010')) { throw 'Unknown pinned 64K runtime' }
+    return $runtimeName
+}
+
+function Get-Service64kSourceManifest {
+    $name = if ((Get-Service64kRuntime) -eq 'rocm1010') { 'accepted-source.rocm1010.json' } else { 'accepted-source.json' }
+    return Join-Path $labRoot $name
+}
+
+function Assert-Service64kJitPaths([string]$StatePath) {
+    $name = 'freetoken__fast_index_copy_1310720_32_2048_1024_4_1'
+    $dll = Join-Path $StatePath ('runs\ctx64k-20261013-000000-00000000\tvm-ffi-cache\' + $name + '_0000000000000000\' + $name + '.dll')
+    if ($dll.Length -ge 260) {
+        throw "MSVC JIT DLL output would be $($dll.Length) characters; configure a shorter state root"
+    }
+}
+
 function Assert-Service64kLocalPaths($Config) {
+    if ($Config.state_root) { Assert-Service64kJitPaths $Config.state_root }
     $profile = Get-Content -LiteralPath (Join-Path $labRoot 'profile.json') -Raw | ConvertFrom-Json
     if ((Split-Path -Leaf $Config.model_path) -ine $profile.model_filename -or
         -not (Test-Path -LiteralPath $Config.model_path -PathType Leaf)) {
@@ -81,11 +107,11 @@ function Get-ProfileLaunchArgs {
     $guardFile = Join-Path $runDir 'resource-guard.json'
     Write-Service38Json $guardFile (Get-Service64kGuard)
     return @{
-        Label = 'reviewed-64k'; Src = $source64k; RunDir = $runDir; Port = $port;
+        Label = 'reviewed-64k'; Runtime = (Get-Service64kRuntime); Src = $source64k; RunDir = $runDir; Port = $port;
         ModelPath = $config.model_path; Python = (Join-Path $venvRoot 'Scripts\python.exe');
         SdkDevel = (Join-Path $venvRoot 'Lib\site-packages\_rocm_sdk_devel');
         TritonSite = (Join-Path $venvRoot 'Lib\site-packages'); StateRoot = $stateRoot;
-        StateManifest = (Join-Path $labRoot 'accepted-source.json'); ResourceGuard = $guardFile;
+        StateManifest = (Get-Service64kSourceManifest); ResourceGuard = $guardFile;
         MsvcRoot = $config.msvc_root; WindowsSdkRoot = $config.windows_sdk_root;
         WindowsSdkVersion = '10.0.26100.0'
     }

@@ -14,6 +14,10 @@ NATIVE_FILES = {
     '_rocm_sdk_devel/lib/llvm/bin/clang-cl.exe', '_rocm_sdk_devel/bin/amdhip64_7.dll',
     'torch/lib/torch_hip.dll', 'torch/_C.cp312-win_amd64.pyd', 'triton/_C/libtriton.pyd',
 }
+RUNTIMES = {
+    'rocm1000': ('2.13.0+rocm10.0.0', '3.8.0.post28', '10.0.0'),
+    'rocm1010': ('2.14.0+rocm10.1.0', '3.8.0.post29', '10.1.0'),
+}
 
 
 def digest(path: Path) -> str:
@@ -37,7 +41,7 @@ def require(condition: bool, message: str) -> None:
         raise ValueError(message)
 
 
-def verify(repo: Path, state: dict, venv: Path) -> dict:
+def verify(repo: Path, state: dict, venv: Path, runtime: str = 'rocm1000') -> dict:
     require(state.get('schema') == 1 and state.get('mode') == 'repository64k-reviewed-source', 'Wrong reviewed source schema')
     require(identity(venv) == identity(sys.prefix), 'Wrong reviewed Python environment')
     require(sys.version_info[:3] == (3, 12, 0), 'Wrong reviewed Python version')
@@ -53,8 +57,11 @@ def verify(repo: Path, state: dict, venv: Path) -> dict:
         require(hashlib.sha256(path.read_bytes().replace(b'\r\n', b'\n')).hexdigest() == expected,
                 'Reviewed source changed: ' + name)
     expected = state['packages']
-    require(len(expected) == 74 and expected.get('torch') == '2.13.0+rocm10.0.0'
-            and expected.get('triton-windows') == '3.8.0.post28'
+    require(runtime in RUNTIMES, 'Unknown reviewed runtime')
+    torch_version, triton_version, sdk_version = RUNTIMES[runtime]
+    require(len(expected) == 74 and expected.get('torch') == torch_version
+            and expected.get('triton-windows') == triton_version
+            and expected.get('rocm-sdk-core') == sdk_version
             and expected.get('transformers') == '5.19.0', 'Wrong reviewed package profile')
     installed = {d.metadata['Name'].lower().replace('_', '-'): d.version for d in metadata.distributions()}
     require(installed == expected, 'Reviewed package versions changed')
@@ -64,7 +71,8 @@ def verify(repo: Path, state: dict, venv: Path) -> dict:
     for name, expected in native.items():
         require(digest(site / name) == expected, 'Reviewed native binary changed: ' + name)
     return {'reviewed_source_verified': True, 'python_files': len(files), 'build_files': len(build),
-            'packages': len(installed), 'native_files': len(native), 'gpu_runtime_loaded': False}
+            'packages': len(installed), 'native_files': len(native), 'gpu_runtime_loaded': False,
+            'runtime': runtime}
 
 
 if __name__ == '__main__':
@@ -72,6 +80,7 @@ if __name__ == '__main__':
     parser.add_argument('--repo', type=Path, required=True)
     parser.add_argument('--verify', type=Path, required=True)
     parser.add_argument('--venv-root', type=Path, required=True)
+    parser.add_argument('--runtime', choices=RUNTIMES, default='rocm1000')
     args = parser.parse_args()
     state = json.loads(args.verify.read_text(encoding='utf-8-sig'))
-    print(json.dumps(verify(args.repo, state, args.venv_root)))
+    print(json.dumps(verify(args.repo, state, args.venv_root, args.runtime)))

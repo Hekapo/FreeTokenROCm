@@ -1,0 +1,766 @@
+{
+  "schema": 2,
+  "kind": "windows-rocm1010-experimental-qualification",
+  "recorded_at_utc": "2026-10-12T20:13:26.902621+00:00",
+  "base_commit": "13687fc305a6131a5f6319aa840ec0a584d97aa3",
+  "branch": "integration/rocm1010-upgrade",
+  "python": "3.12.0",
+  "constraints": "windows-rocm1010-candidate-20261012.txt",
+  "constraints_sha256": "4f943e0755c5ea390400b4a56b284d44d59c491268aaa76eb21c9275ad18e253",
+  "packages": {
+    "amd-torch-device-gfx1201": "2.14.0+rocm10.1.0",
+    "amd-torch-device-gfx12-0": "2.14.0+rocm10.1.0",
+    "annotated-doc": "0.0.5",
+    "annotated-types": "0.8.0",
+    "anyio": "4.14.2",
+    "apache-tvm-ffi": "0.1.13.post3",
+    "certifi": "2026.7.22",
+    "charset-normalizer": "3.5.1",
+    "click": "8.5.0",
+    "colorama": "0.4.6",
+    "distro": "1.9.0",
+    "einops": "0.8.2",
+    "fastapi": "0.143.0",
+    "filelock": "3.32.4",
+    "flashlib": "0.3.0",
+    "fsspec": "2026.7.0",
+    "gguf": "0.19.0",
+    "h11": "0.16.0",
+    "hf-xet": "1.6.0",
+    "httpcore": "1.0.9",
+    "httpx": "0.28.1",
+    "huggingface-hub": "1.33.0",
+    "idna": "3.19",
+    "iniconfig": "2.3.0",
+    "jinja2": "3.1.6",
+    "jiter": "0.16.0",
+    "llvmlite": "0.49.0",
+    "markdown-it-py": "4.2.0",
+    "markupsafe": "3.0.3",
+    "mdurl": "0.1.2",
+    "mpmath": "1.3.0",
+    "msgpack": "1.2.2",
+    "networkx": "3.6.1",
+    "numba": "0.67.0",
+    "numpy": "2.4.6",
+    "openai": "2.54.0",
+    "opentelemetry-api": "1.44.0",
+    "packaging": "26.3",
+    "partial-json-parser": "0.2.1.1.post7",
+    "pip": "23.2.1",
+    "pluggy": "1.6.0",
+    "prompt-toolkit": "3.0.53",
+    "pydantic": "2.14.1",
+    "pydantic-core": "2.50.1",
+    "pygments": "2.21.0",
+    "pytest": "9.1.1",
+    "pyyaml": "6.0.3",
+    "pyzmq": "27.2.0",
+    "regex": "2026.8.31",
+    "requests": "2.34.2",
+    "rich": "15.0.0",
+    "rocm": "10.1.0",
+    "rocm-bootstrap": "0.1.0",
+    "rocm-sdk-core": "10.1.0",
+    "rocm-sdk-devel": "10.1.0",
+    "rocm-sdk-device-gfx1201": "10.1.0",
+    "rocm-sdk-libraries": "10.1.0",
+    "safetensors": "0.8.0",
+    "setuptools": "84.0.0",
+    "shellingham": "1.5.4",
+    "sniffio": "1.3.1",
+    "starlette": "1.6.0",
+    "sympy": "1.14.0",
+    "tokenizers": "0.23.1",
+    "torch": "2.14.0+rocm10.1.0",
+    "tqdm": "4.70.0",
+    "transformers": "5.19.0",
+    "triton-windows": "3.8.0.post29",
+    "typer": "0.27.2",
+    "typing-extensions": "4.16.0",
+    "typing-inspection": "0.4.4",
+    "urllib3": "2.7.0",
+    "uvicorn": "0.52.4",
+    "wcwidth": "0.9.1"
+  },
+  "native_files": {
+    "_rocm_sdk_devel/lib/llvm/bin/clang-cl.exe": "119ae30b710a870db2b4597175b74ae22d4527d67c51183a0b91399a7e955ce4",
+    "_rocm_sdk_devel/bin/amdhip64_7.dll": "f20e2065cee5889789bf73df0c2d1f4efb481e74ade30488c352fd65ad80ac83",
+    "torch/lib/torch_hip.dll": "6a817898f9a5efe4b33be5fb8bfdad3c0bdd774135515693803bd6a4bb7f1370",
+    "torch/_C.cp312-win_amd64.pyd": "5e4ec4ba896660d071a4db4fb606d56d4d898ead7ea7f96eb72abe12ebfc7256",
+    "triton/_C/libtriton.pyd": "53575dc2546d901ac940af628b67166cdc122b294e56c868bf675085d168ff2a"
+  },
+  "package_constraints_match": true,
+  "source_canonical_sha256": "ba7510b4d8b97cd853522ab76c6329cb1b21465b6d7a33f377032d54cf478287",
+  "build_canonical_sha256": "2c8e11526ce5ea810b0eef628b7137502869d1344ae0cb48af99e992e0f643a1",
+  "compiler_adapter_sha256": "c30250abfaa0ee14e744e84628458d0f423d82f63759525c5be0591fbd63b19d",
+  "model_qualified": false,
+  "ordinary_profile_selected": false,
+  "compiler_safety": {
+    "mode": "experimental-skip-range-fold",
+    "torch": "2.14.0+rocm10.1.0",
+    "hip": "7.16.26385",
+    "triton_windows": "3.8.0.post29",
+    "target": "gfx1201",
+    "disabled_pass": "tritonamdgpu-fold-true-cmpi",
+    "compiler_sha256": "50dceba3abd768308bb59ff5e7b85a0d8c47e5ff9fa27558051cd6903eff7da3",
+    "pipeline_sha256": "f17d220e76378b81af4b5fba897a85a3966534fea4924f27ef6220e2361f88b7",
+    "hook_sha256": "c30250abfaa0ee14e744e84628458d0f423d82f63759525c5be0591fbd63b19d",
+    "cache_key": "freetoken-rocm1010-range-safety:50dceba3abd768308bb59ff5e7b85a0d8c47e5ff9fa27558051cd6903eff7da3:c30250abfaa0ee14e744e84628458d0f423d82f63759525c5be0591fbd63b19d",
+    "installed_files_modified": false,
+    "native_compiler_fixed": false
+  },
+  "scripts_sha256": {
+    "scripts/windows-rocm1010/compiler_safety.py": "c30250abfaa0ee14e744e84628458d0f423d82f63759525c5be0591fbd63b19d",
+    "scripts/windows-rocm1010/qualify_compiler.py": "741bd3ad1caff0cf1490a7f561e4539451677b93f829d03afffb8517d78643d2",
+    "scripts/windows-rocm1010/qualify_gpu.py": "f00920feb03e129cec15813d153dd94f9ff49ab62f95b8dbf692bb7ee092f7d3",
+    "scripts/windows-rocm1010/qualify_gpu.ps1": "880e035aaa39042280398ede07df6ed11293be1fbecb5763c27031d80192fd2b"
+  },
+  "status": "q4-attention-and-short-64k-stop-passed-with-workaround",
+  "host_vendor_matrix_qualified": false,
+  "host": {
+    "os": {
+      "Caption": "\u041c\u0430\u0439\u043a\u0440\u043e\u0441\u043e\u0444\u0442 Windows 11 Pro",
+      "Version": "10.0.26100",
+      "BuildNumber": "26100"
+    },
+    "driver": [
+      {
+        "DeviceName": "AMD Radeon RX 9070 XT",
+        "DriverVersion": "32.0.31041.1004"
+      }
+    ]
+  },
+  "verification": {
+    "cpu_unit_tests_passed": 12,
+    "compiler_reproducers": 4,
+    "compiler_reproducers_modes": [
+      "original",
+      "range-safety"
+    ],
+    "raw_faults_reproduced": true,
+    "workaround_predicates_restored": true,
+    "cache_separated": true,
+    "installed_files_unchanged": true,
+    "candidate_native_files_unchanged_after_gpu": true,
+    "small_gpu_checks_passed": 5,
+    "project_gpu_tests_passed": 6,
+    "compiled_triton_kernels": 19,
+    "maximum_compiled_lds_bytes": 36864,
+    "gpu_peak_allocated_bytes": 362602496,
+    "gpu_peak_reserved_bytes": 400556032,
+    "model_loaded": true,
+    "full_model_series_run": false,
+    "performance_gain_measured": false,
+    "host_driver_or_os_changed": false,
+    "wrapper_parser_and_negative_guards_passed": true,
+    "q4_attention_tests_passed": 3,
+    "bootstrap_cpu_tests_passed": 3,
+    "smoke_client_cpu_tests_passed": 4,
+    "short_64k_smoke_passed": true,
+    "managed_stop_passed": true
+  },
+  "gpu_reference_checks": [
+    {
+      "case": "histogram-1024-64",
+      "passed": true,
+      "shared_bytes": 256,
+      "seconds": 2.094,
+      "output_sha256": "7ee9520bdfe94f51e8a24a0e3ccd4e0fab5a8a2a9dba0ea7ea2bf5d465459789"
+    },
+    {
+      "case": "histogram-4096-128",
+      "passed": true,
+      "shared_bytes": 512,
+      "seconds": 0.125,
+      "output_sha256": "15f9cc479d334e34cc5a637f28508968033b17f1a87ed92a1e335955d1710c8c"
+    },
+    {
+      "case": "dynamic-loop",
+      "passed": true,
+      "shared_bytes": 0,
+      "seconds": 0.031,
+      "output_sha256": "1b6bf7e0a611a747c2ef87a1702c2e9c6395317100fe7fe7c87baa811a877e56"
+    },
+    {
+      "case": "nested-loop",
+      "passed": true,
+      "shared_bytes": 0,
+      "seconds": 0.032,
+      "output_sha256": "66687aadf862bd776c8fc18b8e9f8e20089714856ee233b3902a591d0d5f2925"
+    },
+    {
+      "case": "torch-fp32-gemm",
+      "passed": true
+    }
+  ],
+  "compiled_kernel_metadata": [
+    {
+      "name": "histogram_mask",
+      "shared": 512,
+      "num_warps": 4,
+      "num_ctas": 1
+    },
+    {
+      "name": "dynamic_loop_mask",
+      "shared": 0,
+      "num_warps": 4,
+      "num_ctas": 1
+    },
+    {
+      "name": "chunk_gated_delta_rule_fwd_kkt_solve_kernel",
+      "shared": 4096,
+      "num_warps": 4,
+      "num_ctas": 1
+    },
+    {
+      "name": "chunk_local_cumsum_scalar_kernel",
+      "shared": 8,
+      "num_warps": 8,
+      "num_ctas": 1
+    },
+    {
+      "name": "_topp_fused",
+      "shared": 1024,
+      "num_warps": 32,
+      "num_ctas": 1
+    },
+    {
+      "name": "chunk_gated_delta_rule_fwd_kkt_solve_kernel",
+      "shared": 4096,
+      "num_warps": 4,
+      "num_ctas": 1
+    },
+    {
+      "name": "histogram_mask",
+      "shared": 256,
+      "num_warps": 4,
+      "num_ctas": 1
+    },
+    {
+      "name": "_topp_fused",
+      "shared": 32768,
+      "num_warps": 32,
+      "num_ctas": 1
+    },
+    {
+      "name": "chunk_fwd_kernel_o",
+      "shared": 16384,
+      "num_warps": 4,
+      "num_ctas": 1
+    },
+    {
+      "name": "chunk_gated_delta_rule_fwd_kernel_h_blockdim64",
+      "shared": 36864,
+      "num_warps": 4,
+      "num_ctas": 1
+    },
+    {
+      "name": "chunk_gated_delta_rule_fwd_kkt_solve_kernel",
+      "shared": 4096,
+      "num_warps": 2,
+      "num_ctas": 1
+    },
+    {
+      "name": "fused_sigmoid_gating_delta_rule_update_kernel",
+      "shared": 128,
+      "num_warps": 1,
+      "num_ctas": 1
+    },
+    {
+      "name": "chunk_gated_delta_rule_fwd_kkt_solve_kernel",
+      "shared": 4096,
+      "num_warps": 1,
+      "num_ctas": 1
+    },
+    {
+      "name": "l2norm_fwd_kernel",
+      "shared": 0,
+      "num_warps": 8,
+      "num_ctas": 1
+    },
+    {
+      "name": "chunk_gated_delta_rule_fwd_kkt_solve_kernel",
+      "shared": 4096,
+      "num_warps": 1,
+      "num_ctas": 1
+    },
+    {
+      "name": "nested_loop_value",
+      "shared": 0,
+      "num_warps": 4,
+      "num_ctas": 1
+    },
+    {
+      "name": "chunk_gated_delta_rule_fwd_kkt_solve_kernel",
+      "shared": 4096,
+      "num_warps": 2,
+      "num_ctas": 1
+    },
+    {
+      "name": "_topp_fused",
+      "shared": 256,
+      "num_warps": 8,
+      "num_ctas": 1
+    },
+    {
+      "name": "recompute_w_u_fwd_kernel",
+      "shared": 16384,
+      "num_warps": 4,
+      "num_ctas": 1
+    }
+  ],
+  "gguf_native_sha256": "d80690e2d2cd9d8275616ec328f7a64246ffd28fe20a32c5765cd02199682aca",
+  "resources": {
+    "before": {
+      "at": "2026-10-12T22:59:17.9547484+03:00",
+      "free_physical_gib": 49.376,
+      "free_commit_gib": 45.379,
+      "gpu_local_used_gib": 0.941,
+      "gpu_local_free_gib": 14.868
+    },
+    "after": {
+      "at": "2026-10-12T23:01:15.9864784+03:00",
+      "free_physical_gib": 49.314,
+      "free_commit_gib": 45.34,
+      "gpu_local_used_gib": 0.935,
+      "gpu_local_free_gib": 14.874
+    },
+    "sample_count": 84,
+    "sampled_minimum_ram_gib": 46.983,
+    "sampled_minimum_commit_gib": 42.285,
+    "sampled_minimum_vram_gib": 14.115
+  },
+  "evidence_directory_relative_to_workspace": "rocm10-20260926/research-refresh-20261011-audit/deps-upgrade-20261012",
+  "evidence_sha256": {
+    "compiler-safety-unit-final.xml": "ca81c4c9a35fa970fca00c464dcc536d95ed9c3d49f66439efb2978e46110c86",
+    "shared-reproducers-compile/qualification.json": "5a7a380300ba50aecbfff46d7f7a69762e0e8851b5592364a899a8477fdc50fb",
+    "gpu-diagnostic/checks/gpu-qualification.json": "116b1cb5be6c53a7fb5c232d7459a4cda0615d2d11d91ed0cd8c8cd5f75a848e",
+    "gpu-diagnostic/checks/operators.xml": "e41ae9c18b5595bb42303cab751bfbaaea30fea72ed0c41e9acca054c601bf69",
+    "gpu-diagnostic/process-result.json": "7785d904902fc213fd6cbd48db562b849e623c0dca72cb7ae7cc57d725e96822",
+    "gpu-diagnostic/resources.jsonl": "a8ac2ad4124991c99a28fe24641c27244a8ef267600a2278f74ffd58704a4f5f",
+    "gpu-diagnostic/stdout.txt": "49d7efcd665769433b247a19e5427a9553d84b4adc815ae2677a28b9c3a5cf06",
+    "gpu-diagnostic/stderr.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "candidate-snapshot.json": "75d6e634645e31e580679726d2e3c8fa2f3b3cc6d7c7f2241d2bf2df3b25cb8c",
+    "wrapper-negative-gates.json": "b2b7f71a0c83026c4e9f1fa4fcf59a33a1899fd4daf1f421295115bbc79fee9c",
+    "short-trial-qualification.json": "1e2665dd02e8d0f7e9341295d47510e1ef0edb06ee33173c3d7cddd8cc09cf09"
+  },
+  "post_gpu_run_wrapper_changes": [
+    "initialize optional stdout/stderr tasks",
+    "release an acquired abandoned mutex before reporting interruption",
+    "observe the managed stop-request file while the diagnostic is running"
+  ],
+  "post_gpu_run_wrapper_verification": "PowerShell parser and non-GPU authorization/output rejection checks",
+  "remaining_gates": [
+    "host support decision; OS/driver maintenance is separate",
+    "ordinary-profile adoption decision; compiler workaround remains required",
+    "measured useful result before ordinary-profile adoption"
+  ],
+  "last_continued_at_utc": "2026-10-12T21:03:21.366536+00:00",
+  "initial_evidence_scope": "Core diagnostic before adding q4-attention suite; original scripts_sha256 retained",
+  "model_qualification_scope": "Short 64K smoke passed; full model/long64K qualification not performed with this stack",
+  "model_smoke_passed": true,
+  "short_trial": {
+    "schema": 1,
+    "kind": "rocm1010-short-64k-trial",
+    "recorded_at_utc": "2026-10-12T21:03:21.366536+00:00",
+    "scope": "configured context/KV 65536; one readiness probe and one 24/391 counting request; managed Stop",
+    "full_model_series_run": false,
+    "long64k_run": false,
+    "ordinary_profile_selected": false,
+    "host_vendor_matrix_qualified": false,
+    "native_compiler_fixed": false,
+    "requires_range_safety": true,
+    "compiler_adapter_sha256": "c30250abfaa0ee14e744e84628458d0f423d82f63759525c5be0591fbd63b19d",
+    "q4_attention": {
+      "passed": 3,
+      "time_s": 97.521,
+      "resources": {
+        "sample_count": 73,
+        "sampled_minimum_gib": {
+          "free_physical_gib": 47.295,
+          "free_commit_gib": 43.285,
+          "gpu_local_free_gib": 14.403
+        }
+      },
+      "process": {
+        "model_loaded": false,
+        "host_vendor_matrix_qualified": false,
+        "completed": true,
+        "resources_before": {
+          "at": "2026-10-12T23:28:51.8065976+03:00",
+          "free_physical_gib": 49.031,
+          "free_commit_gib": 45.269,
+          "gpu_local_used_gib": 0.935,
+          "gpu_local_free_gib": 14.874
+        },
+        "host_os": {
+          "Caption": "\u041c\u0430\u0439\u043a\u0440\u043e\u0441\u043e\u0444\u0442 Windows 11 Pro",
+          "Version": "10.0.26100",
+          "BuildNumber": "26100"
+        },
+        "host_driver": [
+          {
+            "DeviceName": "AMD Radeon RX 9070 XT",
+            "DriverVersion": "32.0.31041.1004"
+          }
+        ],
+        "pid": 23720,
+        "process_started": "2026-10-12T23:28:52.7451580+03:00",
+        "exit_code": 0,
+        "resources_after": {
+          "at": "2026-10-12T23:30:34.5679196+03:00",
+          "free_physical_gib": 48.968,
+          "free_commit_gib": 45.239,
+          "gpu_local_used_gib": 0.975,
+          "gpu_local_free_gib": 14.834
+        }
+      },
+      "gpu": {
+        "torch": "2.14.0+rocm10.1.0",
+        "hip": "7.16.26385",
+        "compiler_safety": {
+          "mode": "experimental-skip-range-fold",
+          "torch": "2.14.0+rocm10.1.0",
+          "hip": "7.16.26385",
+          "triton_windows": "3.8.0.post29",
+          "target": "gfx1201",
+          "disabled_pass": "tritonamdgpu-fold-true-cmpi",
+          "compiler_sha256": "50dceba3abd768308bb59ff5e7b85a0d8c47e5ff9fa27558051cd6903eff7da3",
+          "pipeline_sha256": "f17d220e76378b81af4b5fba897a85a3966534fea4924f27ef6220e2361f88b7",
+          "hook_sha256": "c30250abfaa0ee14e744e84628458d0f423d82f63759525c5be0591fbd63b19d",
+          "cache_key": "freetoken-rocm1010-range-safety:50dceba3abd768308bb59ff5e7b85a0d8c47e5ff9fa27558051cd6903eff7da3:c30250abfaa0ee14e744e84628458d0f423d82f63759525c5be0591fbd63b19d",
+          "installed_files_modified": false,
+          "native_compiler_fixed": false
+        },
+        "device": "AMD Radeon RX 9070 XT",
+        "target": "GPUTarget(backend='hip', arch='gfx1201', warp_size=32)",
+        "checks": [],
+        "suite": "q4-attention",
+        "project_operators_exit": 0,
+        "max_gpu_allocated_bytes": 84716544,
+        "max_gpu_reserved_bytes": 144703488,
+        "host_vendor_matrix_qualified": false,
+        "model_loaded": false,
+        "passed": true
+      }
+    },
+    "bootstrap_cpu": {
+      "passed": 3,
+      "time_s": 12.456
+    },
+    "smoke_client_cpu": {
+      "passed": 4,
+      "time_s": 5.964
+    },
+    "smoke": {
+      "configured_capacity": 65536,
+      "kv_capacity": 65536,
+      "request_count": 1,
+      "done": true,
+      "usage": {
+        "prompt_tokens": 24,
+        "completion_tokens": 391,
+        "total_tokens": 415
+      },
+      "finish_reason": "stop",
+      "error": null,
+      "passed": true,
+      "status_code": 200,
+      "content_sha256": "34a4f1e5bb080915a30b7f67a8546b8e72da130622436caa0fcb81a2eb62c0ee",
+      "total_s": 12.449323,
+      "ttft_s": 1.786651,
+      "last_token_s": 12.404247,
+      "decode_tps": 36.731
+    },
+    "live_model": {
+      "id": "qwen3.6-35b-a3b-q4_1",
+      "ctx": 65536,
+      "attn": "hybrid_linear",
+      "moe": true,
+      "sampling": {}
+    },
+    "live_kv": {
+      "used_pages": 0,
+      "total_pages": 65536,
+      "page_size": 1
+    },
+    "stats_after": {
+      "instance_id": "14c04e72-6b77-4210-942c-2eaf62f425f8",
+      "model": {
+        "id": "qwen3.6-35b-a3b-q4_1",
+        "ctx": 65536,
+        "attn": "hybrid_linear",
+        "moe": true,
+        "sampling": {}
+      },
+      "uptime_s": 71,
+      "kv": {
+        "used_pages": 0,
+        "total_pages": 65536,
+        "page_size": 1
+      },
+      "mamba": null,
+      "swa": null,
+      "vram_bytes": 8162115584,
+      "gpus": [
+        {
+          "index": 0,
+          "name": "AMD Radeon RX 9070 XT",
+          "uuid": "GPU-30303030-3030-3033-3030-303030303030",
+          "total_bytes": 17095983104
+        }
+      ],
+      "throughput": {
+        "decode_tps": 37.1,
+        "prefill_tps": 0.0
+      },
+      "requests": {
+        "active": 0,
+        "completed": 2,
+        "p95_ms": 12358,
+        "ttft_mean_ms": 1046,
+        "prompt_tokens_total": 36,
+        "completion_tokens_total": 402
+      }
+    },
+    "bootstrap_processes": [
+      {
+        "mode": "experimental-skip-range-fold",
+        "torch": "2.14.0+rocm10.1.0",
+        "hip": "7.16.26385",
+        "triton_windows": "3.8.0.post29",
+        "target": "gfx1201",
+        "disabled_pass": "tritonamdgpu-fold-true-cmpi",
+        "compiler_sha256": "50dceba3abd768308bb59ff5e7b85a0d8c47e5ff9fa27558051cd6903eff7da3",
+        "pipeline_sha256": "f17d220e76378b81af4b5fba897a85a3966534fea4924f27ef6220e2361f88b7",
+        "hook_sha256": "c30250abfaa0ee14e744e84628458d0f423d82f63759525c5be0591fbd63b19d",
+        "cache_key": "freetoken-rocm1010-range-safety:50dceba3abd768308bb59ff5e7b85a0d8c47e5ff9fa27558051cd6903eff7da3:c30250abfaa0ee14e744e84628458d0f423d82f63759525c5be0591fbd63b19d",
+        "installed_files_modified": false,
+        "native_compiler_fixed": false,
+        "pid": 17844,
+        "parent_pid": 18512,
+        "before_gpu_initialization": true,
+        "stable_buffer_ops": {
+          "triton_version": "3.8.0",
+          "use_buffer_ops": true,
+          "cached_at_process_start": true
+        }
+      },
+      {
+        "mode": "experimental-skip-range-fold",
+        "torch": "2.14.0+rocm10.1.0",
+        "hip": "7.16.26385",
+        "triton_windows": "3.8.0.post29",
+        "target": "gfx1201",
+        "disabled_pass": "tritonamdgpu-fold-true-cmpi",
+        "compiler_sha256": "50dceba3abd768308bb59ff5e7b85a0d8c47e5ff9fa27558051cd6903eff7da3",
+        "pipeline_sha256": "f17d220e76378b81af4b5fba897a85a3966534fea4924f27ef6220e2361f88b7",
+        "hook_sha256": "c30250abfaa0ee14e744e84628458d0f423d82f63759525c5be0591fbd63b19d",
+        "cache_key": "freetoken-rocm1010-range-safety:50dceba3abd768308bb59ff5e7b85a0d8c47e5ff9fa27558051cd6903eff7da3:c30250abfaa0ee14e744e84628458d0f423d82f63759525c5be0591fbd63b19d",
+        "installed_files_modified": false,
+        "native_compiler_fixed": false,
+        "pid": 2844,
+        "parent_pid": 17844,
+        "before_gpu_initialization": true,
+        "stable_buffer_ops": {
+          "triton_version": "3.8.0",
+          "use_buffer_ops": true,
+          "cached_at_process_start": true
+        }
+      },
+      {
+        "mode": "experimental-skip-range-fold",
+        "torch": "2.14.0+rocm10.1.0",
+        "hip": "7.16.26385",
+        "triton_windows": "3.8.0.post29",
+        "target": "gfx1201",
+        "disabled_pass": "tritonamdgpu-fold-true-cmpi",
+        "compiler_sha256": "50dceba3abd768308bb59ff5e7b85a0d8c47e5ff9fa27558051cd6903eff7da3",
+        "pipeline_sha256": "f17d220e76378b81af4b5fba897a85a3966534fea4924f27ef6220e2361f88b7",
+        "hook_sha256": "c30250abfaa0ee14e744e84628458d0f423d82f63759525c5be0591fbd63b19d",
+        "cache_key": "freetoken-rocm1010-range-safety:50dceba3abd768308bb59ff5e7b85a0d8c47e5ff9fa27558051cd6903eff7da3:c30250abfaa0ee14e744e84628458d0f423d82f63759525c5be0591fbd63b19d",
+        "installed_files_modified": false,
+        "native_compiler_fixed": false,
+        "pid": 22248,
+        "parent_pid": 17844,
+        "before_gpu_initialization": true,
+        "stable_buffer_ops": {
+          "triton_version": "3.8.0",
+          "use_buffer_ops": true,
+          "cached_at_process_start": true
+        }
+      }
+    ],
+    "readiness_probe": {
+      "successful": true,
+      "evidence": "RUNNING requires a successful readiness response; stdout records HTTP200"
+    },
+    "managed_execution": {
+      "started_at": "2026-10-12T23:56:58.9175982+03:00",
+      "client_exit": 0,
+      "stop_exit": 0,
+      "clean_stop": true,
+      "error": null,
+      "completed_at": "2026-10-12T23:57:24.0354088+03:00"
+    },
+    "stop": {
+      "status": "STOPPED",
+      "root_owned": false,
+      "observer_owned": false,
+      "listener_owned": false,
+      "process_tree_count": 0,
+      "listeners": 0,
+      "recovery_required": false,
+      "trial_blocked": false,
+      "ctx64k_quarantine_history_preserved": true,
+      "trial_runtime_verified": true,
+      "trial_runtime_error": null,
+      "repository_launcher_model_smoke_performed": false,
+      "stop_requested": false,
+      "state_error": null,
+      "identity_error": null,
+      "health": null,
+      "startup_evidence": {
+        "pointer_present": true,
+        "spawn_intent_present": true,
+        "state_file_present": true,
+        "recovery_identity_present": true
+      }
+    },
+    "resources": {
+      "first_observer_sample": {
+        "at": "2026-10-12T23:53:33.8830603+03:00",
+        "free_physical_gib": 49.234,
+        "free_commit_gib": 43.923,
+        "gpu_local_used_gib": 0.994,
+        "gpu_local_free_gib": 14.815
+      },
+      "sample_count": 72,
+      "sampled_minimum_gib": {
+        "free_physical_gib": 23.544,
+        "free_commit_gib": 8.909,
+        "gpu_local_free_gib": 6.638
+      },
+      "after_stop": {
+        "at": "2026-10-12T23:57:22.1852608+03:00",
+        "free_physical_gib": 49.62,
+        "free_commit_gib": 44.77,
+        "gpu_local_used_gib": 0.983,
+        "gpu_local_free_gib": 14.826
+      }
+    },
+    "startup_memory_exception": {
+      "at": "2026-10-12T23:53:26.0243935+03:00",
+      "user_authorization": "Cannot free memory; explicitly permits this short launch under current conditions",
+      "scope": "short 64K trial, one counting request and Stop after repairing confirmed LNK1104 setup failure",
+      "original_startup_commit_floor_gib": 45,
+      "user_approved_observation_gib": 42.7,
+      "observed_free_commit_gib": 44.971,
+      "one_start_commit_floor_gib": 42,
+      "runtime_floors": {
+        "free_physical_gib": 12,
+        "free_commit_gib": 4,
+        "gpu_local_free_gib": 3
+      },
+      "normal_profile_changed": false,
+      "previous_trial": "trial-20261012",
+      "previous_model_start_aborted": "LNK1104 due to 289-character DLL output path",
+      "original_failure_history_preserved": true
+    },
+    "startup_memory_floor_restored_gib": 45,
+    "candidate_native_files_unchanged": true,
+    "long_path_guard_rejects_before_runtime_creation": true,
+    "observer_log_events": [
+      {
+        "kind": "server_log",
+        "at": "2026-10-12T23:56:21.3304493+03:00",
+        "line": "\u001b[1m[2026-10-12|23:56:21|core|rank=0]\u001b[0m \u001b[32mINFO    \u001b[0m Prefill batch, #new-seq: 1, #new-token: 12, #cached-token: 0, token usage: 0.00, #running-req: 1, #queue-req: 0, input throughput (token/s): 0.68"
+      },
+      {
+        "kind": "server_log",
+        "at": "2026-10-12T23:57:04.8522262+03:00",
+        "line": "\u001b[1m[2026-10-12|23:57:04|core|rank=0]\u001b[0m \u001b[32mINFO    \u001b[0m Prefill batch, #new-seq: 1, #new-token: 24, #cached-token: 0, token usage: 0.00, #running-req: 1, #queue-req: 0, input throughput (token/s): 0.55"
+      }
+    ],
+    "aborted_startup": {
+      "reason": "MSVC LNK1104; output DLL path 289 characters",
+      "readiness_failed": true,
+      "report_preserved": true,
+      "linker_control": {
+        "model_loaded": false,
+        "gpu_initialized": false,
+        "same_object_path": "C:\\Users\\Iskandar\\FreeTokenROCm\\FreeTokenROCm\\repos\\wt-64k-migration\\.local\\windows-rocm1010\\trial-20261012\\state\\runs\\ctx64k-20261012-234634-d18b06a8\\tvm-ffi-cache\\freetoken__fast_index_copy_1310720_32_2048_1024_4_1_fb7d1c58efaf1683\\cuda_0.o",
+        "object_sha256": "c0b2d98893a5d9c8ae1165139c93a58735fd86e1299f8cc4ce7f04ab7bdd87a4",
+        "cases": [
+          {
+            "case": "long",
+            "dll_path": "C:\\Users\\Iskandar\\FreeTokenROCm\\.local\\rocm1010\\link-path-check\\xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\\freetoken__fast_index_copy_1310720_32_2048_1024_4_1.dll",
+            "path_chars": 289,
+            "exit_code": 1104,
+            "dll_exists": false
+          },
+          {
+            "case": "short",
+            "dll_path": "C:\\Users\\Iskandar\\FreeTokenROCm\\.local\\rocm1010\\link-path-check\\freetoken__fast_index_copy_1310720_32_2048_1024_4_1.dll",
+            "path_chars": 119,
+            "exit_code": 0,
+            "dll_exists": true
+          }
+        ]
+      }
+    },
+    "historical_baseline_tps": {
+      "4K": 37.2,
+      "8K": 37.42,
+      "64K": 37.56
+    },
+    "historical_baseline_comparison_percent": {
+      "4K": -1.26,
+      "8K": -1.84,
+      "64K": -2.21
+    },
+    "comparison_limit": "one new-stack sample versus older two-sample means; no isolated upgrade gain established",
+    "scripts_sha256": {
+      "scripts/windows-rocm1010/compiler_safety.py": "c30250abfaa0ee14e744e84628458d0f423d82f63759525c5be0591fbd63b19d",
+      "scripts/windows-rocm1010/prepare_trial.py": "d4c54ec35f9a6fa02bddd030f259f81648f554e75b824a53af5af4bb807cdf71",
+      "scripts/windows-rocm1010/qualify_compiler.py": "741bd3ad1caff0cf1490a7f561e4539451677b93f829d03afffb8517d78643d2",
+      "scripts/windows-rocm1010/qualify_gpu.py": "c968aec164f57c156485c24598c908c6d4bbb0b5f6c32bfe43466533634c906f",
+      "scripts/windows-rocm1010/smoke_request.py": "61962e2f807a7e4768fd787827569c852f281bcd526bccec4e7ca7ebb5230ba4",
+      "scripts/windows-rocm1010/trial_sitecustomize.py": "d29787e4678121e68bd7bc2e38f07377abd1785850d0491d0d0a8ddc22b1dfcf",
+      "scripts/windows-rocm1010/qualify_gpu.ps1": "551cdb4768b0f16271f99bb960fcc0cc4e9ad55352a884d3f83150fd9623ec5b",
+      "tests/kernels/test_triton_attention.py": "d7957b8f8fdadf45ef522c40bae4b0a8145cf18228f037085f8d2f9fc82e6898",
+      "tests/utils/test_rocm1010_trial_bootstrap.py": "a0a4966d545eed67aceb0383ec154fb595c35d154d793c1f168bc3fed756279d",
+      "tests/utils/test_rocm1010_smoke_request.py": "a96b62ab1dae7554ea3d932eedbb3831124ace7abb4053a02321445e22c2e4ec"
+    },
+    "evidence_sha256_relative_to_workspace": {
+      "rocm10-20260926/research-refresh-20261011-audit/deps-upgrade-20261012/q4-attention-diagnostic/checks/operators.xml": "b0c2c7affa0f59da0b0dd28ace5b035e1abbadd9c2a0432a4fee416cc0f9de78",
+      "rocm10-20260926/research-refresh-20261011-audit/deps-upgrade-20261012/q4-attention-diagnostic/checks/gpu-qualification.json": "b1cd766c6092ea080ca862ae159b7408521134116779bc3805ed8d179b33ed45",
+      "rocm10-20260926/research-refresh-20261011-audit/deps-upgrade-20261012/q4-attention-diagnostic/process-result.json": "b026e0da3212d0ee48e39f7f5c759629ffcda5aea7394025599fa3c94a0cce8f",
+      "rocm10-20260926/research-refresh-20261011-audit/deps-upgrade-20261012/q4-attention-diagnostic/resources.jsonl": "3256c3f1861bfd9a58ef1d2cf86d851c7b0cc060b1fa4e5aa032e7298d0794c5",
+      "rocm10-20260926/research-refresh-20261011-audit/deps-upgrade-20261012/q4-attention-diagnostic/stdout.txt": "ea87e85c9625b6bed1988a2979649b12a6babe6c6407ab44396b34517ee9092f",
+      "rocm10-20260926/research-refresh-20261011-audit/deps-upgrade-20261012/q4-attention-diagnostic/stderr.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "rocm10-20260926/research-refresh-20261011-audit/deps-upgrade-20261012/trial-bootstrap.xml": "1e2aa70329d0bcce94a673e890920e20763c92898b4198b65dba297a130be7a5",
+      "rocm10-20260926/research-refresh-20261011-audit/deps-upgrade-20261012/smoke-client-cpu.xml": "95aa2880a85d495925347c951c5929178d5a3ed6721b5358d491311a29062588",
+      ".local/rocm1010/link-path-check/result.json": "2778b24a0532d0a41502f76ea732cd1f384152b51b3c416b14a3f8b9d69e71f9",
+      "rocm10-20260926/research-refresh-20261011-audit/deps-upgrade-20261012/long-path-preflight-rejection.json": "a8d1518ab41548ca49294a5e5fac11ce25cd55ededb5685f4c9a3806244cd52e",
+      "FreeTokenROCm/repos/wt-64k-migration/.local/windows-rocm1010/trial-20261012/state/runs/ctx64k-20261012-234634-d18b06a8/startup-result.json": "d50df65d8df42977e46459f7d670c31f84ec290cd4789f8e711e12c55308d8f6",
+      "FreeTokenROCm/repos/wt-64k-migration/.local/windows-rocm1010/trial-20261012/state/runs/ctx64k-20261012-234634-d18b06a8/observer.jsonl": "81addf7ea602b39df9d965c2a6ead3973a4dc7086a5ec891a428eae38c9d17e1",
+      "FreeTokenROCm/repos/wt-64k-migration/.local/windows-rocm1010/trial-20261012/state/runs/ctx64k-20261012-234634-d18b06a8/server-logs/stderr.log": "9d4f03d2e3b1bd5c28ae8191d8af2b515421aa9167b928f1018ac9afad17f1dd",
+      ".local/rocm1010/smoke-20261012/runs/ctx64k-20261012-235329-35d9e10a/resource-guard.json": "9e3c0e2abc037810bc0965b576ba2d845a3231c01a3af45a6b8a5db5577fb3ed",
+      ".local/rocm1010/smoke-20261012/runs/ctx64k-20261012-235329-35d9e10a/profile-at-start.json": "269f0b14bd2af83cdd8960d6dfa77da196a67a142e9cbd5495aaefa2d80182f4",
+      ".local/rocm1010/smoke-20261012/runs/ctx64k-20261012-235329-35d9e10a/release-at-start.json": "bbc8b89641352058ccf1ae2f945e47818bf7209d6a9970cfae329dbd29e9ae2a",
+      ".local/rocm1010/smoke-20261012/runs/ctx64k-20261012-235329-35d9e10a/memory-authorization.json": "27030bc3496a40a635a75a82b9242aab9a83768644b3fade6d0bb221f6ad0997",
+      ".local/rocm1010/smoke-20261012/runs/ctx64k-20261012-235329-35d9e10a/compiler-init.jsonl": "540fb000327bf0725a65695316b8077efd036b05e3cf3cf4c84a5654512dfdfc",
+      ".local/rocm1010/smoke-20261012/runs/ctx64k-20261012-235329-35d9e10a/observer.jsonl": "eec93ef4261586217a0484c3c06f82a2de49d8d6460a038bfaee0ae339b56f0b",
+      ".local/rocm1010/smoke-20261012/runs/ctx64k-20261012-235329-35d9e10a/smoke-request.json": "e822ab6ac380c143e2831925bc5adc5e8e2b7c0a9297dfc3e0e35862d0801ca5",
+      ".local/rocm1010/smoke-20261012/runs/ctx64k-20261012-235329-35d9e10a/short-smoke-execution.json": "609c3c6b92ffafd9f130620d257231a63a2cfae4e02f746d765a193f8f51e0af",
+      ".local/rocm1010/smoke-20261012/runs/ctx64k-20261012-235329-35d9e10a/status-before-request.json": "fc3df232f5529f977c57253eb750e8a5ea17cd835a207cc79e3e1b42792c429a",
+      ".local/rocm1010/smoke-20261012/runs/ctx64k-20261012-235329-35d9e10a/status-after-stop.json": "efbcac13779faa11155a22abf770650b5cc866f6c4d98c9ac7a2e31f8c8119c8",
+      ".local/rocm1010/smoke-20261012/runs/ctx64k-20261012-235329-35d9e10a/stop-controller.txt": "a4bad0ebfbec69cf187307bfe43973088f112dd2ea3eb094e498362f9c7c15c0",
+      ".local/rocm1010/smoke-20261012/runs/ctx64k-20261012-235329-35d9e10a/resources-after-stop.json": "2f34efdf96b2d865dba2f9d3b1d99bc09d36696b26387c7a58f6d892f5f2c5c1",
+      ".local/rocm1010/smoke-20261012/runs/ctx64k-20261012-235329-35d9e10a/server-logs/stdout.log": "952ce6c74f2e05c46c45f0d4d068b92eb248a8b49c329b1f6f663abd32f5e949",
+      ".local/rocm1010/smoke-20261012/runs/ctx64k-20261012-235329-35d9e10a/server-logs/stderr.log": "251c8ef0b076ff586abb2b9fe6a1d1db260c33b4576db134e7a229a5ece41bb8"
+    }
+  }
+}

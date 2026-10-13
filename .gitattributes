@@ -1,2 +1,3 @@
 scripts/windows-rocm64k/** text eol=lf
+scripts/windows-rocm1010/** text eol=lf
 scripts/windows-rocm64k/evidence/*.json -text whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol

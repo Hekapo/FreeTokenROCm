@@ -9,7 +9,8 @@ packages by themselves.
 |---|---|
 | `windows-rocm1000-control-20261012.txt` | Original 73-package control, Transformers5.16.1 / Hub1.29.0 / FastAPI0.141.1 / Pydantic2.13.5 |
 | `windows-rocm1000-pydeps-20261012.txt` | Qualified 74-package candidate, Transformers5.19.0 / Hub1.33.0 / FastAPI0.143.0 / Pydantic2.14.1 |
-| `windows-rocm1010-candidate-20261012.txt` | Prepared 74-package Torch2.14 / SDK10.1 / Triton post29 candidate; compiler correctness gate failed, GPU not qualified |
+| `windows-rocm1010-candidate-20261012.txt` | 74-package Torch2.14 / SDK10.1 / Triton post29; selected GPU, Q4_1/attention and short64K/Stop pass with the explicit range-fold workaround; selected by the working64K config on2026-10-13 |
+| `windows-rocm1010-profile-20261013.json` | Current working10.1 profile; short and16K model evidence, resource minima, cleanStop and rollback scope |
 
 The two ROCm10.0 snapshots retain AMD Torch2.13.0+rocm10.0.0, SDK10.0.0, Triton Windows3.8.0.post28,
 TVM-FFI0.1.13.post3, OpenAI2.54.0, NumPy2.4.6 and flashlib0.3.0.
@@ -60,9 +61,22 @@ Use the exact local wheels with the candidate constraints, explicit `--python`,
 `--no-config`, and independent native/JIT caches.
 
 All installed requirements, CPU regressions, native build/load and CPU TVM-FFI
-tensor interop passed. Triton post29 failed the histogram and loop range-analysis
-reproducers. An experimental process-only pass bypass restored the histogram
-output predicate; it has no GPU correctness or performance acceptance.
+tensor interop passed. Unmodified Triton post29 still fails the histogram and
+loop range-analysis reproducers. The explicit process-only compiler hook now
+passes four full-pipeline reproducers, five small GPU reference checks and six
+selected project GPU tests. Q4_1/attention and one short model request at
+configured65536 context/KV capacity have also passed with a clean managed Stop.
+The short request produced the reference391-token answer at36.731 tokens/s.
+No isolated performance improvement or long64K qualification has been established.
+Installed Triton files remain unchanged. The shared managed launcher now supports
+both pinned stacks; the working configuration selects10.1 and preserves a10.0
+rollback configuration. The2026-10-12 qualification manifest remains a historical
+record of the separate trial. See the [managed launch guide](../docs/run-windows-rocm64k.md).
+
+[The qualification manifest](windows-rocm1010-qualification-20261012.json)
+records the pinned environment, compiler hook, native hashes, resource minima
+and exact check scope. See the [upgrade report](../docs/rocm1010-upgrade-20261012.md)
+for repeatable commands and remaining gates.
 
 The host also differs from AMD's ROCm10.1 support row: Windows11 24H2 and
 DriverStore32.0.31041.1004 versus 25H2 / 32.0.31041.5005. The candidate is prepared

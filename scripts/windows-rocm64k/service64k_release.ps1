@@ -1,16 +1,28 @@
-function Get-Service64kRuntimeNames {
-    @('service64k.ps1','service64k_lifecycle.ps1','service64k_paths.ps1','service64k_release.ps1','launch64k.ps1','service38_safety.ps1','service38_probes.ps1','service38_probe_native.cs','service38_gpu_identity.cs','query_service38.ps1','observe_service38.ps1','stable_triton_knob.py','cached_stats_launcher.py','reviewed_source.py','accepted-source.json','profile.json','quarantine-history.json')
+function Get-Service64kRuntimeNames([string]$Runtime = 'rocm1000') {
+    $names = @('service64k.ps1','service64k_lifecycle.ps1','service64k_paths.ps1','service64k_release.ps1','launch64k.ps1','service38_safety.ps1','service38_probes.ps1','service38_probe_native.cs','service38_gpu_identity.cs','query_service38.ps1','observe_service38.ps1','stable_triton_knob.py','cached_stats_launcher.py','reviewed_source.py','profile.json','quarantine-history.json')
+    if ($Runtime -eq 'rocm1010') {
+        return $names + @('accepted-source.rocm1010.json','rocm1010/compiler_safety.py','rocm1010/sitecustomize.py')
+    }
+    if ($Runtime -ne 'rocm1000') { throw 'Unknown pinned 64K runtime' }
+    return $names + @('accepted-source.json')
 }
 
 function Read-Service38WorkingRelease {
-    $release = Get-Content -LiteralPath (Join-Path $PSScriptRoot 'reviewed-release.json') -Raw | ConvertFrom-Json
-    if ($release.schema -ne 3 -or $release.mode -ne 'repository-64k-20261012' -or
+    $runtime = if ($runtimeName) { $runtimeName } else { 'rocm1000' }
+    if ($runtime -cnotin @('rocm1000','rocm1010')) { throw 'Unknown pinned 64K runtime' }
+    $releaseName = if ($runtime -eq 'rocm1010') { 'reviewed-release.rocm1010.json' } else { 'reviewed-release.json' }
+    $schema = if ($runtime -eq 'rocm1010') { 4 } else { 3 }
+    $mode = if ($runtime -eq 'rocm1010') { 'repository-64k-rocm1010-20261013' } else { 'repository-64k-20261012' }
+    $policy = if ($runtime -eq 'rocm1010') { 'adopt short-qualified rocm1010 with workaround; observe under load' }
+        else { 'reuse verified stages; no repeated full qualification' }
+    $release = Get-Content -LiteralPath (Join-Path $PSScriptRoot $releaseName) -Raw | ConvertFrom-Json
+    if ($release.schema -ne $schema -or $release.mode -ne $mode -or
         $release.profile -ne '64k' -or $release.capacity -ne 65536 -or $release.kv_capacity -ne 65536 -or
         $release.max_running_requests -ne 1 -or $release.cache_stable_triton_knob -ne $true -or
-        $release.user_policy -ne 'reuse verified stages; no repeated full qualification') {
+        $release.user_policy -ne $policy) {
         throw 'Unexpected repository 64K release record'
     }
-    $required = @(Get-Service64kRuntimeNames)
+    $required = @(Get-Service64kRuntimeNames $runtime)
     $seen = @()
     foreach ($entry in $release.runtime_hashes) {
         if ($entry.path -notin $required -or $entry.path -in $seen -or
@@ -46,6 +58,7 @@ function Read-Service38WorkingRelease {
             }
         }
     }
+    if ($runtime -eq 'rocm1010') { return Read-Service64kRocm1010Evidence $release }
     return Read-Service64kEvidence $release
 }
 
@@ -54,6 +67,81 @@ function Assert-Service38RecordedStop($Status) {
         $Status.process_tree_count -ne 0 -or $Status.listeners -ne 0 -or $Status.recovery_required -ne $false) {
         throw 'Integration evidence has no verified clean Stop'
     }
+}
+
+function Assert-Service64kRocm1010Proof($Proof) {
+    $helperHash = (Get-FileHash -LiteralPath (Join-Path $PSScriptRoot 'rocm1010/compiler_safety.py')).Hash
+    if ($Proof.schema -ne 1 -or $Proof.scope -ne 'short64k-with-range-safety' -or
+        $Proof.compiler_hook_sha256 -ine $helperHash -or
+        $Proof.compiler_hook_sha256 -ine 'c30250abfaa0ee14e744e84628458d0f423d82f63759525c5be0591fbd63b19d' -or
+        $Proof.full_model_series_run -ne $false -or $Proof.long64k_run -ne $false -or
+        $Proof.native_compiler_fixed -ne $false -or $Proof.requires_range_safety -ne $true -or
+        $Proof.native_files_unchanged -ne $true -or $Proof.q4_attention_tests_passed -ne 3 -or
+        $Proof.bootstrap_cpu_tests_passed -ne 3 -or $Proof.smoke_client_cpu_tests_passed -ne 4) {
+        throw 'Missing exact ROCm10.1 compiler, operator or bootstrap proof'
+    }
+    $manifest = Get-Content -LiteralPath (Join-Path $PSScriptRoot 'accepted-source.rocm1010.json') -Raw | ConvertFrom-Json
+    foreach ($field in @('packages','native_files')) {
+        $actual = $manifest.$field
+        $recorded = $Proof.$field
+        if (@($actual.PSObject.Properties).Count -ne @($recorded.PSObject.Properties).Count) {
+            throw 'ROCm10.1 environment proof has a different inventory'
+        }
+        foreach ($entry in $actual.PSObject.Properties) {
+            if ($recorded.($entry.Name) -cne $entry.Value) { throw 'ROCm10.1 environment differs from model proof' }
+        }
+    }
+    $smoke = $Proof.smoke
+    if ($smoke.passed -ne $true -or $smoke.configured_capacity -ne 65536 -or $smoke.kv_capacity -ne 65536 -or
+        $smoke.request_count -ne 1 -or $smoke.status_code -ne 200 -or $smoke.done -ne $true -or
+        $smoke.usage.prompt_tokens -ne 24 -or $smoke.usage.completion_tokens -ne 391 -or
+        $smoke.finish_reason -ne 'stop' -or $smoke.error -or
+        $smoke.content_sha256 -ne '34a4f1e5bb080915a30b7f67a8546b8e72da130622436caa0fcb81a2eb62c0ee' -or
+        $Proof.live_model.ctx -ne 65536 -or $Proof.live_kv.total_pages -ne 65536 -or $Proof.live_kv.page_size -ne 1) {
+        throw 'Missing matched ROCm10.1 model smoke at live 64K capacity'
+    }
+    if (-not @($Proof.bootstrap_processes).Count) { throw 'Missing ROCm10.1 worker bootstrap trace' }
+    foreach ($worker in $Proof.bootstrap_processes) {
+        if ($worker.before_gpu_initialization -ne $true -or $worker.hook_sha256 -ine $helperHash -or
+            $worker.stable_buffer_ops.use_buffer_ops -ne $true -or $worker.target -ne 'gfx1201' -or
+            $worker.installed_files_modified -ne $false) { throw 'Incorrect ROCm10.1 worker bootstrap' }
+    }
+    $minimum = $Proof.resources.sampled_minimum_gib
+    foreach ($entry in @(@('free_physical_gib',12), @('free_commit_gib',4), @('gpu_local_free_gib',3))) {
+        if ($null -eq $minimum.($entry[0]) -or -not [double]::IsFinite([double]$minimum.($entry[0])) -or
+            $minimum.($entry[0]) -lt $entry[1]) { throw 'ROCm10.1 smoke violated critical resource floors' }
+    }
+    Assert-Service38RecordedStop $Proof.stop
+}
+
+function Read-Service64kRocm1010Evidence($Release) {
+    if ($Release.runtime -cne 'rocm1010' -or $Release.requires_range_safety -ne $true -or
+        $Release.qualification_scope -ne 'short64k; long64k not inherited from rocm1000') {
+        throw 'Incorrect ROCm10.1 release scope'
+    }
+    $evidence = @{}
+    foreach ($entry in $Release.evidence_hashes) {
+        $expectedPath = switch ($entry.kind) { 'source' {'evidence/source.json'}; 'short' {'evidence/rocm1010-short.json'}; default {''} }
+        if (-not $expectedPath -or $entry.path -cne $expectedPath -or $evidence.ContainsKey($entry.kind) -or
+            (Get-FileHash -LiteralPath (Join-Path $PSScriptRoot $entry.path)).Hash -ine $entry.sha256) {
+            throw 'ROCm10.1 acceptance evidence changed or duplicated'
+        }
+        $evidence[$entry.kind] = Get-Content -LiteralPath (Join-Path $PSScriptRoot $entry.path) -Raw | ConvertFrom-Json
+    }
+    if ($evidence.Count -ne 2) { throw 'Incomplete ROCm10.1 acceptance evidence' }
+    Assert-Service64kRocm1010Proof $evidence.short
+    $manifest = Get-Content -LiteralPath (Get-Service64kSourceManifest) -Raw | ConvertFrom-Json
+    $code = $evidence.source.accepted_code_sha256
+    if (@($manifest.python_files.PSObject.Properties).Count -ne 476 -or
+        @($code.PSObject.Properties).Count -ne 476) { throw 'Incorrect reviewed source inventory' }
+    foreach ($entry in $code.PSObject.Properties) {
+        if ($manifest.python_files.($entry.Name) -ine $entry.Value) { throw 'Source differs from model acceptance' }
+    }
+    $probe = & (Join-Path $venvRoot 'Scripts\python.exe') -B (Join-Path $PSScriptRoot 'reviewed_source.py') --repo $source64k --venv-root $venvRoot --runtime rocm1010 --verify (Get-Service64kSourceManifest)
+    if ($LASTEXITCODE -ne 0 -or ($probe | ConvertFrom-Json).reviewed_source_verified -ne $true) {
+        throw 'Reviewed source or ROCm10.1 environment changed'
+    }
+    return $Release
 }
 
 

@@ -8,7 +8,8 @@ param(
     [string]$ModelPath = '',
     [string]$StateRoot = '',
     [string]$MsvcRoot = '',
-    [string]$WindowsSdkRoot = ''
+    [string]$WindowsSdkRoot = '',
+    [ValidateSet('rocm1000','rocm1010')][string]$Runtime = 'rocm1010'
 )
 $ErrorActionPreference = 'Stop'
 if (-not $IsWindows) { throw 'This managed profile requires Windows and PowerShell 7' }
@@ -34,13 +35,14 @@ try {
         $profile = Get-Content -LiteralPath (Join-Path $labRoot 'profile.json') -Raw | ConvertFrom-Json
         $programFilesX86 = [Environment]::GetEnvironmentVariable('ProgramFiles(x86)')
         $candidate = [pscustomobject]@{
-            schema = 1; venv_root = $VenvRoot; model_path = $ModelPath;
+            schema = 2; runtime = $Runtime; venv_root = $VenvRoot; model_path = $ModelPath;
             state_root = $(if ($StateRoot) { $StateRoot } else { Split-Path -Parent $configPath });
             msvc_root = $(if ($MsvcRoot) { $MsvcRoot } else {
                 Join-Path $programFilesX86 ("Microsoft Visual Studio\2022\BuildTools\VC\Tools\MSVC\" + $profile.msvc_version) });
             windows_sdk_root = $(if ($WindowsSdkRoot) { $WindowsSdkRoot } else { Join-Path $programFilesX86 'Windows Kits\10' })
         }
         $config = Resolve-Service64kConfig $candidate
+        $runtimeName = $config.runtime
         $venvRoot = $config.venv_root
         $null = Read-Service38WorkingRelease
         Assert-Service64kLocalPaths $config
@@ -52,10 +54,11 @@ try {
             ConvertTo-Json -Depth 5
         return
     }
-    if ($VenvRoot -or $ModelPath -or $StateRoot -or $MsvcRoot -or $WindowsSdkRoot) {
+    if ($VenvRoot -or $ModelPath -or $StateRoot -or $MsvcRoot -or $WindowsSdkRoot -or $PSBoundParameters.ContainsKey('Runtime')) {
         throw 'Local path parameters are accepted only with -Action Configure'
     }
     $config = Read-Service64kConfig $configPath
+    $runtimeName = $config.runtime
     $venvRoot = $config.venv_root
     $stateRoot = $config.state_root
     New-Item -ItemType Directory -Force -Path $stateRoot | Out-Null
@@ -90,9 +93,10 @@ try {
             Assert-Service64kLocalPaths $config
             $guard = Get-Service64kGuard
             [ordered]@{ verified = $true; source_root = $source64k; venv_root = $venvRoot;
+                runtime = $runtimeName; compiler_workaround = ($runtimeName -eq 'rocm1010');
                 source_files = 476; packages = 74; native_files = 5;
                 gpu_instance = $guard.gpu_instance; resource_guard = $guard;
-                model_started = $false; repository_launcher_model_smoke_performed = $false } |
+                model_started = $false; repository_launcher_model_smoke_performed = ($release.repository_launcher_model_smoke_performed -eq $true) } |
                 ConvertTo-Json -Depth 6
         }
         'Start' {
@@ -168,9 +172,12 @@ try {
             catch { $health = @{ error = $_.Exception.Message } }
         }
         $stopRequested = Test-Path -LiteralPath $stopRequestFile
-        $workingReleaseValid=$false; $workingReleaseError=$null
+        $workingReleaseValid=$false; $workingReleaseError=$null; $repositoryModelSmoke=$false
         if (Test-Path -LiteralPath (Join-Path $labRoot 'reviewed-release.json')) {
-            try { $null=Read-Service38WorkingRelease; $workingReleaseValid=$true }
+            try {
+                $checkedRelease=Read-Service38WorkingRelease; $workingReleaseValid=$true
+                $repositoryModelSmoke=($checkedRelease.repository_launcher_model_smoke_performed -eq $true)
+            }
             catch { $workingReleaseError=$_.Exception.Message }
         }
         $recoveryRequired = (Test-Path -LiteralPath $faultFile) -or $stopRequested
@@ -185,13 +192,14 @@ try {
         } elseif ($owned -and $state.status -eq 'STARTING') { 'STARTING'
         } elseif ($owned) { 'RUNNING' } else { 'STOPPED' }
         [ordered]@{ status = $status; root_owned = $owned; observer_owned = $observerOwned;
+            runtime = $runtimeName; compiler_workaround = ($runtimeName -eq 'rocm1010');
             listener_owned = $listenerOwned;
             process_tree_count = $remainingTree.Count;
             listeners = $listeners.Count; recovery_required = $recoveryRequired;
             ctx64k_quarantined = ((Test-Path -LiteralPath $quarantine64k) -and -not $workingReleaseValid);
             ctx64k_quarantine_history_preserved = (Test-Path -LiteralPath $quarantine64k);
             ctx64k_working_release_valid = $workingReleaseValid; ctx64k_working_release_error = $workingReleaseError;
-            repository_launcher_model_smoke_performed = $false;
+            repository_launcher_model_smoke_performed = $repositoryModelSmoke;
             stop_requested = $stopRequested;
             state_error = $stateError; identity_error = $identityError;
             health = $health; startup_evidence = $startupEvidence; state = $state } |

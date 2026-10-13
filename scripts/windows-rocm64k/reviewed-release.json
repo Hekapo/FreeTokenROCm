@@ -13,7 +13,7 @@
   "runtime_hashes": [
     {
       "path": "service64k.ps1",
-      "sha256": "3bef6f601c446333f37b1e10bef92fd92796d15dc1adbdca46e3f1f3f78c9aaf"
+      "sha256": "97ce777f80afb594534b0c29f8f84456ce279ac684715b95d4f48d378e1f96f8"
     },
     {
       "path": "service64k_lifecycle.ps1",
@@ -21,15 +21,15 @@
     },
     {
       "path": "service64k_paths.ps1",
-      "sha256": "c3ee01581b9b6f8e7542e45861aa5cdd10bc40b86583ab762bbe05ccd735fff4"
+      "sha256": "57ca72684818613a0ba6783b955313f5870fe8f814f889e32acfdbb66ef6bc4e"
     },
     {
       "path": "service64k_release.ps1",
-      "sha256": "9919c786bd65380b8fe68b0f83aa3447121991a840c572ab7b1f252e7a3a30e1"
+      "sha256": "efcd89e51e1e855f0fcf00f5d3236371138649fe0389d026ff869ad1a95e7057"
     },
     {
       "path": "launch64k.ps1",
-      "sha256": "7e0437143dfb8f961af35cbe11e6567faa2ee3e220b311e6d2d9fda1a986d79e"
+      "sha256": "d643b6735e0fb8e6ad1acde86a865f4ba87d110ebe082def22f0ea324a428f0f"
     },
     {
       "path": "service38_safety.ps1",
@@ -65,7 +65,7 @@
     },
     {
       "path": "reviewed_source.py",
-      "sha256": "fa864007e7b5ed80f42b67416caa32dcbc017de946832c7b5655c46cd944224e"
+      "sha256": "eff1aa46f5e6afc271bd5615742455537850eb679cc0f3465d40e8b9ce5f08f3"
     },
     {
       "path": "accepted-source.json",

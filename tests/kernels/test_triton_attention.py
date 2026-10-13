@@ -58,6 +58,45 @@ def test_chunked_prefill_query_metadata_avoids_blocking_device_tensor(monkeypatc
     assert [event.waits for event in events] == [1, 0]
 
 
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="needs a GPU")
+def test_qwen35_gguf_attention_prefill_and_decode_matches_reference():
+    from freetoken.kernel.triton.attention import decode_paged_attention, extend_paged_attention
+
+    torch.manual_seed(12012)
+    heads, kv_heads, dimension = 16, 2, 256
+    lengths, prefixes, extensions = [7, 10], [4, 8], [3, 2]
+    total_kv, total_q = sum(lengths), sum(extensions)
+    q = torch.randn(total_q, heads, dimension, device='cuda', dtype=torch.bfloat16)
+    k = torch.randn(total_kv, kv_heads, dimension, device='cuda', dtype=torch.bfloat16)
+    v = torch.randn_like(k)
+    kv_ptr = torch.tensor([0, 7, 17], device='cuda', dtype=torch.int32)
+    q_ptr = torch.tensor([0, 3, 5], device='cuda', dtype=torch.int32)
+    indices = torch.arange(total_kv, device='cuda', dtype=torch.int32)
+    prefix = torch.tensor(prefixes, device='cuda', dtype=torch.int32)
+    requests = torch.tensor([0, 0, 0, 1, 1], device='cuda', dtype=torch.int32)
+    positions = torch.tensor([4, 5, 6, 8, 9], device='cuda', dtype=torch.int64)
+    scale = dimension ** -0.5
+    prefill = extend_paged_attention(q, k, v, q_ptr, kv_ptr, indices, prefix,
+                                     max(extensions), scale)
+    expected_prefill = _reference_paged_attention(q, k, v, kv_ptr, indices,
+                                                 requests, positions, scale, None)
+    assert torch.isfinite(prefill).all()
+    torch.testing.assert_close(prefill.float(), expected_prefill.float(), rtol=0.02, atol=0.02)
+
+    query = q[[2, 4]]
+    splits = 8
+    scratch = torch.empty(2, heads, splits, dimension, device='cuda', dtype=torch.float32)
+    lse = torch.empty(2, heads, splits, device='cuda', dtype=torch.float32)
+    counts = torch.full((2,), splits, device='cuda', dtype=torch.int32)
+    last_positions = torch.tensor([6, 9], device='cuda', dtype=torch.int64)
+    decode = decode_paged_attention(query, k, v, kv_ptr, indices, last_positions,
+                                    scratch, lse, counts, splits, scale)
+    expected_decode = _reference_paged_attention(query, k, v, kv_ptr, indices,
+        torch.arange(2, device='cuda', dtype=torch.int32), last_positions, scale, None)
+    assert torch.isfinite(decode).all()
+    torch.testing.assert_close(decode.float(), expected_decode.float(), rtol=0.02, atol=0.02)
+
+
 def _reference_paged_attention(
     q: torch.Tensor,
     k_cache: torch.Tensor,
