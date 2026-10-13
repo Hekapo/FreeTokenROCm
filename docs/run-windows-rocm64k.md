@@ -28,6 +28,13 @@ the hook separately before GPU initialization in every spawned kernel process;
 failure terminates that process. Installed Triton files are unchanged. Old10.0
 long64K evidence is not treated as a qualification of the new native stack.
 
+The [2026-10-13 full64K series](rocm1010-full-series-20261013.md) passed353requests,
+the exact context boundary, long decode, queue/cancel,30-minute load and Stop
+on the new native stack. Post-soak control speed declined50.02→39.06tokens/s;
+the cause remains open. The release reader retains its immutable short acceptance
+proof; the full-series manifest records later functional results and performance
+limitations separately.
+
 From the checkout root, configure the paths to the existing environment and
 model. The model and environment stay in their current locations.
 

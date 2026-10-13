@@ -1,0 +1,487 @@
+{
+  "schema": 1,
+  "kind": "normal-rocm1010-full-64k-series",
+  "head": "f755ec7cee78cfec83e1449bce6bfacc8e28238f",
+  "passed": true,
+  "runtime": "rocm1010",
+  "compiler_workaround_required": true,
+  "native_compiler_fixed": false,
+  "scope": "single normal 64k profile; 4k/8k ABBA not repeated",
+  "execution": {
+    "started_at": "2026-10-13T17:51:58.4780653+03:00",
+    "head": "f755ec7cee78cfec83e1449bce6bfacc8e28238f",
+    "runtime": "rocm1010",
+    "blocks": [
+      {
+        "mode": "coverage",
+        "started_at": "2026-10-13T17:54:56.4915786+03:00",
+        "exit": 0,
+        "passed": true,
+        "completed_at": "2026-10-13T18:07:29.3617786+03:00"
+      },
+      {
+        "mode": "benchmark",
+        "started_at": "2026-10-13T18:07:29.3632675+03:00",
+        "exit": 0,
+        "passed": true,
+        "completed_at": "2026-10-13T18:10:34.0840456+03:00"
+      },
+      {
+        "mode": "long-speed",
+        "started_at": "2026-10-13T18:10:34.0848886+03:00",
+        "exit": 0,
+        "passed": true,
+        "completed_at": "2026-10-13T18:24:18.7441950+03:00"
+      },
+      {
+        "mode": "queue",
+        "started_at": "2026-10-13T18:24:18.7449924+03:00",
+        "exit": 0,
+        "passed": true,
+        "completed_at": "2026-10-13T18:33:06.3549721+03:00"
+      },
+      {
+        "mode": "soak",
+        "started_at": "2026-10-13T18:33:06.3558385+03:00",
+        "exit": 0,
+        "passed": true,
+        "completed_at": "2026-10-13T19:08:18.0848463+03:00"
+      }
+    ],
+    "run_dir": "C:\\Users\\Iskandar\\FreeTokenROCm\\.local\\service64k-rocm1010\\runs\\ctx64k-20261013-175201-f7e1a6ea",
+    "clean_stop": true,
+    "error": null,
+    "completed_at": "2026-10-13T19:08:25.7210802+03:00",
+    "passed": true
+  },
+  "blocks": {
+    "coverage": {
+      "passed": true,
+      "requests": 38,
+      "elapsed_s": 751.2618420124054,
+      "control_before_tps": 36.76124045622772,
+      "control_after_tps": 38.57566765578413,
+      "control_recovery_ratio": 1.049357072205354,
+      "kv_used_at_end": 0,
+      "raw_summary_sha256": "562ccc4444c3f5a2f89606f8aba9b8cdfd55c26ce4255083755018d6b96aed7c"
+    },
+    "benchmark": {
+      "passed": true,
+      "requests": 66,
+      "elapsed_s": 183.0480239391327,
+      "control_before_tps": 39.9385560675907,
+      "control_after_tps": 50.728407908368034,
+      "control_recovery_ratio": 1.2701612903209856,
+      "kv_used_at_end": 0,
+      "raw_summary_sha256": "617ed1920440328aaabeae4fa891165f5316bbc8424cc0d4ca2cbe68c1d30415"
+    },
+    "long-speed": {
+      "passed": true,
+      "requests": 28,
+      "elapsed_s": 822.8796215057373,
+      "control_before_tps": 50.72840790846406,
+      "control_after_tps": 50.02565418161816,
+      "control_recovery_ratio": 0.9861467419179808,
+      "kv_used_at_end": 0,
+      "raw_summary_sha256": "614afa6131135f2450d21a41a5103a7df14c3ed28a28531eb2c865a7433783f9"
+    },
+    "queue": {
+      "passed": true,
+      "requests": 24,
+      "elapsed_s": 525.8931043148041,
+      "control_before_tps": 49.916805324493446,
+      "control_after_tps": 49.92319508445119,
+      "control_recovery_ratio": 1.0001280081911534,
+      "kv_used_at_end": 0,
+      "raw_summary_sha256": "962ec88f3fe3194cc720cefafa0a25be002aab007fd00fbda12849d9b8e2c030"
+    },
+    "soak": {
+      "passed": true,
+      "requests": 197,
+      "elapsed_s": 2110.122535467148,
+      "control_before_tps": 50.01923816858162,
+      "control_after_tps": 39.062500000012754,
+      "control_recovery_ratio": 0.7809495192301613,
+      "kv_used_at_end": 0,
+      "raw_summary_sha256": "01a978ac3006d4206badbb42da7ad30d541d55e59bb222e6bae5ad9122e85803",
+      "cycles": 11,
+      "soak_s": 1837.5159999999887,
+      "idle_s": 120
+    }
+  },
+  "total_requests": 353,
+  "long_decode": {
+    "16384": {
+      "samples": 2,
+      "ttft_median_s": 23.718500000002678,
+      "decode_median_tps": 43.97205770710029,
+      "completion_tokens": [
+        292
+      ],
+      "content_sha256": [
+        "ac4aac48ff9202a199cf471ac799946e83818fd9028b92d46ad998c89d2e1328"
+      ]
+    },
+    "32768": {
+      "samples": 2,
+      "ttft_median_s": 47.64849999999569,
+      "decode_median_tps": 47.64684149057189,
+      "completion_tokens": [
+        292
+      ],
+      "content_sha256": [
+        "ac4aac48ff9202a199cf471ac799946e83818fd9028b92d46ad998c89d2e1328"
+      ]
+    },
+    "49152": {
+      "samples": 2,
+      "ttft_median_s": 72.4690000000046,
+      "decode_median_tps": 50.13360079817347,
+      "completion_tokens": [
+        292
+      ],
+      "content_sha256": [
+        "ac4aac48ff9202a199cf471ac799946e83818fd9028b92d46ad998c89d2e1328"
+      ]
+    },
+    "61440": {
+      "samples": 2,
+      "ttft_median_s": 91.71050000000105,
+      "decode_median_tps": 49.326693082945795,
+      "completion_tokens": [
+        391
+      ],
+      "content_sha256": [
+        "34a4f1e5bb080915a30b7f67a8546b8e72da130622436caa0fcb81a2eb62c0ee"
+      ]
+    },
+    "63488": {
+      "samples": 2,
+      "ttft_median_s": 95.11750000000029,
+      "decode_median_tps": 42.79626986928088,
+      "completion_tokens": [
+        391
+      ],
+      "content_sha256": [
+        "34a4f1e5bb080915a30b7f67a8546b8e72da130622436caa0fcb81a2eb62c0ee"
+      ]
+    }
+  },
+  "resource_samples": 1472,
+  "minimum_resources_gib": {
+    "free_physical_gib": 23.519,
+    "free_commit_gib": 10.695,
+    "gpu_local_free_gib": 6.598
+  },
+  "all_retained_requests_passed": true,
+  "soak_memory_growth": {
+    "method": "sum individual private_bytes; raw aggregate was null",
+    "before_private_bytes": 7631683584,
+    "after_private_bytes": 7261274112,
+    "growth_gib": -0.344970703125,
+    "limit_gib": 1,
+    "passed": true,
+    "raw_sha256": {
+      "before-soak-memory.json": "4b54a06dbd9ba1e251d3c76156b34788acf80ee7da6d6cb3e493d86cafb2cb92",
+      "after-soak-memory.json": "ef99e0db157b94f7cdd7e9fa23aa0f397d8c867c465b9dcff3a8cf8ee98ab8b4"
+    }
+  },
+  "bootstrap_processes": [
+    {
+      "mode": "experimental-skip-range-fold",
+      "torch": "2.14.0+rocm10.1.0",
+      "hip": "7.16.26385",
+      "triton_windows": "3.8.0.post29",
+      "target": "gfx1201",
+      "disabled_pass": "tritonamdgpu-fold-true-cmpi",
+      "compiler_sha256": "50dceba3abd768308bb59ff5e7b85a0d8c47e5ff9fa27558051cd6903eff7da3",
+      "pipeline_sha256": "f17d220e76378b81af4b5fba897a85a3966534fea4924f27ef6220e2361f88b7",
+      "hook_sha256": "c30250abfaa0ee14e744e84628458d0f423d82f63759525c5be0591fbd63b19d",
+      "cache_key": "freetoken-rocm1010-range-safety:50dceba3abd768308bb59ff5e7b85a0d8c47e5ff9fa27558051cd6903eff7da3:c30250abfaa0ee14e744e84628458d0f423d82f63759525c5be0591fbd63b19d",
+      "installed_files_modified": false,
+      "native_compiler_fixed": false,
+      "pid": 28440,
+      "parent_pid": 21180,
+      "before_gpu_initialization": true,
+      "stable_buffer_ops": {
+        "triton_version": "3.8.0",
+        "use_buffer_ops": true,
+        "cached_at_process_start": true
+      }
+    },
+    {
+      "mode": "experimental-skip-range-fold",
+      "torch": "2.14.0+rocm10.1.0",
+      "hip": "7.16.26385",
+      "triton_windows": "3.8.0.post29",
+      "target": "gfx1201",
+      "disabled_pass": "tritonamdgpu-fold-true-cmpi",
+      "compiler_sha256": "50dceba3abd768308bb59ff5e7b85a0d8c47e5ff9fa27558051cd6903eff7da3",
+      "pipeline_sha256": "f17d220e76378b81af4b5fba897a85a3966534fea4924f27ef6220e2361f88b7",
+      "hook_sha256": "c30250abfaa0ee14e744e84628458d0f423d82f63759525c5be0591fbd63b19d",
+      "cache_key": "freetoken-rocm1010-range-safety:50dceba3abd768308bb59ff5e7b85a0d8c47e5ff9fa27558051cd6903eff7da3:c30250abfaa0ee14e744e84628458d0f423d82f63759525c5be0591fbd63b19d",
+      "installed_files_modified": false,
+      "native_compiler_fixed": false,
+      "pid": 9816,
+      "parent_pid": 28440,
+      "before_gpu_initialization": true,
+      "stable_buffer_ops": {
+        "triton_version": "3.8.0",
+        "use_buffer_ops": true,
+        "cached_at_process_start": true
+      }
+    },
+    {
+      "mode": "experimental-skip-range-fold",
+      "torch": "2.14.0+rocm10.1.0",
+      "hip": "7.16.26385",
+      "triton_windows": "3.8.0.post29",
+      "target": "gfx1201",
+      "disabled_pass": "tritonamdgpu-fold-true-cmpi",
+      "compiler_sha256": "50dceba3abd768308bb59ff5e7b85a0d8c47e5ff9fa27558051cd6903eff7da3",
+      "pipeline_sha256": "f17d220e76378b81af4b5fba897a85a3966534fea4924f27ef6220e2361f88b7",
+      "hook_sha256": "c30250abfaa0ee14e744e84628458d0f423d82f63759525c5be0591fbd63b19d",
+      "cache_key": "freetoken-rocm1010-range-safety:50dceba3abd768308bb59ff5e7b85a0d8c47e5ff9fa27558051cd6903eff7da3:c30250abfaa0ee14e744e84628458d0f423d82f63759525c5be0591fbd63b19d",
+      "installed_files_modified": false,
+      "native_compiler_fixed": false,
+      "pid": 27296,
+      "parent_pid": 28440,
+      "before_gpu_initialization": true,
+      "stable_buffer_ops": {
+        "triton_version": "3.8.0",
+        "use_buffer_ops": true,
+        "cached_at_process_start": true
+      }
+    }
+  ],
+  "evidence_root": "C:\\Users\\Iskandar\\FreeTokenROCm\\rocm10-20260926\\research-refresh-20261011-audit\\deps-upgrade-20261012\\full-series-20261013-1749",
+  "run_dir": "C:\\Users\\Iskandar\\FreeTokenROCm\\.local\\service64k-rocm1010\\runs\\ctx64k-20261013-175201-f7e1a6ea",
+  "execution_sha256": "990540c7e78af256052de201a158d1a8f683eb173c256b9ce82ba797fcee01c9",
+  "recorded_at_utc": "2026-10-13T16:29:52.756031+00:00",
+  "functional_resource_lifecycle_passed": true,
+  "performance_qualified": false,
+  "performance_gain_established": false,
+  "matched_old_sdk_abba_performed": false,
+  "performance_observation": {
+    "post_soak_control_change_percent": -21.905048076983867,
+    "cause_established": false,
+    "stable_peak_speed_under_mixed_load_established": false,
+    "repeat_3_control_definition": "same24-token prompt,391-token answer, median of3requests before/after each block",
+    "old_4k_8k_series_repeated": false
+  },
+  "packages": {
+    "amd-torch-device-gfx1201": "2.14.0+rocm10.1.0",
+    "amd-torch-device-gfx12-0": "2.14.0+rocm10.1.0",
+    "annotated-doc": "0.0.5",
+    "annotated-types": "0.8.0",
+    "anyio": "4.14.2",
+    "apache-tvm-ffi": "0.1.13.post3",
+    "certifi": "2026.7.22",
+    "charset-normalizer": "3.5.1",
+    "click": "8.5.0",
+    "colorama": "0.4.6",
+    "distro": "1.9.0",
+    "einops": "0.8.2",
+    "fastapi": "0.143.0",
+    "filelock": "3.32.4",
+    "flashlib": "0.3.0",
+    "fsspec": "2026.7.0",
+    "gguf": "0.19.0",
+    "h11": "0.16.0",
+    "hf-xet": "1.6.0",
+    "httpcore": "1.0.9",
+    "httpx": "0.28.1",
+    "huggingface-hub": "1.33.0",
+    "idna": "3.19",
+    "iniconfig": "2.3.0",
+    "jinja2": "3.1.6",
+    "jiter": "0.16.0",
+    "llvmlite": "0.49.0",
+    "markdown-it-py": "4.2.0",
+    "markupsafe": "3.0.3",
+    "mdurl": "0.1.2",
+    "mpmath": "1.3.0",
+    "msgpack": "1.2.2",
+    "networkx": "3.6.1",
+    "numba": "0.67.0",
+    "numpy": "2.4.6",
+    "openai": "2.54.0",
+    "opentelemetry-api": "1.44.0",
+    "packaging": "26.3",
+    "partial-json-parser": "0.2.1.1.post7",
+    "pip": "23.2.1",
+    "pluggy": "1.6.0",
+    "prompt-toolkit": "3.0.53",
+    "pydantic": "2.14.1",
+    "pydantic-core": "2.50.1",
+    "pygments": "2.21.0",
+    "pytest": "9.1.1",
+    "pyyaml": "6.0.3",
+    "pyzmq": "27.2.0",
+    "regex": "2026.8.31",
+    "requests": "2.34.2",
+    "rich": "15.0.0",
+    "rocm": "10.1.0",
+    "rocm-bootstrap": "0.1.0",
+    "rocm-sdk-core": "10.1.0",
+    "rocm-sdk-devel": "10.1.0",
+    "rocm-sdk-device-gfx1201": "10.1.0",
+    "rocm-sdk-libraries": "10.1.0",
+    "safetensors": "0.8.0",
+    "setuptools": "84.0.0",
+    "shellingham": "1.5.4",
+    "sniffio": "1.3.1",
+    "starlette": "1.6.0",
+    "sympy": "1.14.0",
+    "tokenizers": "0.23.1",
+    "torch": "2.14.0+rocm10.1.0",
+    "tqdm": "4.70.0",
+    "transformers": "5.19.0",
+    "triton-windows": "3.8.0.post29",
+    "typer": "0.27.2",
+    "typing-extensions": "4.16.0",
+    "typing-inspection": "0.4.4",
+    "urllib3": "2.7.0",
+    "uvicorn": "0.52.4",
+    "wcwidth": "0.9.1"
+  },
+  "native_files": {
+    "_rocm_sdk_devel/lib/llvm/bin/clang-cl.exe": "119ae30b710a870db2b4597175b74ae22d4527d67c51183a0b91399a7e955ce4",
+    "_rocm_sdk_devel/bin/amdhip64_7.dll": "f20e2065cee5889789bf73df0c2d1f4efb481e74ade30488c352fd65ad80ac83",
+    "torch/lib/torch_hip.dll": "6a817898f9a5efe4b33be5fb8bfdad3c0bdd774135515693803bd6a4bb7f1370",
+    "torch/_C.cp312-win_amd64.pyd": "5e4ec4ba896660d071a4db4fb606d56d4d898ead7ea7f96eb72abe12ebfc7256",
+    "triton/_C/libtriton.pyd": "53575dc2546d901ac940af628b67166cdc122b294e56c868bf675085d168ff2a"
+  },
+  "compiler_hook_sha256": "c30250abfaa0ee14e744e84628458d0f423d82f63759525c5be0591fbd63b19d",
+  "context_capacity": 65536,
+  "kv_capacity": 65536,
+  "host_vendor_matrix_qualified": false,
+  "stop": {
+    "status": "STOPPED",
+    "root_owned": false,
+    "observer_owned": false,
+    "runtime": "rocm1010",
+    "compiler_workaround": true,
+    "listener_owned": false,
+    "process_tree_count": 0,
+    "listeners": 0,
+    "recovery_required": false,
+    "ctx64k_quarantined": false,
+    "ctx64k_quarantine_history_preserved": true,
+    "ctx64k_working_release_valid": true,
+    "ctx64k_working_release_error": null,
+    "repository_launcher_model_smoke_performed": true,
+    "stop_requested": false,
+    "state_error": null,
+    "identity_error": null,
+    "health": null,
+    "startup_evidence": {
+      "pointer_present": true,
+      "spawn_intent_present": true,
+      "state_file_present": true,
+      "recovery_identity_present": true
+    },
+    "state": {
+      "status": "STOPPED",
+      "pid": 21180,
+      "root_start_filetime": 134363767257563177,
+      "root_started_utc": "2026-10-13T14:52:05.7563177Z",
+      "python": "C:\\Users\\Iskandar\\FreeTokenROCm\\.venvs\\freetoken-rocm1010-triton38post29-py312\\Scripts\\python.exe",
+      "port": 1919,
+      "profile": "reviewed-64k",
+      "src": "C:\\Users\\Iskandar\\FreeTokenROCm\\FreeTokenROCm\\repos\\wt-triton38-align-20260928",
+      "head": "f755ec7cee78cfec83e1449bce6bfacc8e28238f",
+      "args": [
+        "-B",
+        "C:\\Users\\Iskandar\\FreeTokenROCm\\FreeTokenROCm\\repos\\wt-triton38-align-20260928\\scripts\\windows-rocm64k\\cached_stats_launcher.py",
+        "serve",
+        "--model",
+        "C:\\models\\Qwen_Qwen3.6-35B-A3B-Q4_1.gguf",
+        "--served-model-name",
+        "qwen3.6-35b-a3b-q4_1",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        "1919",
+        "--tensor-parallel-size",
+        "1",
+        "--dtype",
+        "bfloat16",
+        "--moe-backend",
+        "offload",
+        "--moe-cache-size",
+        "2048",
+        "--moe-cache-policy",
+        "lru",
+        "--expert-load",
+        "serial",
+        "--max-running-requests",
+        "1",
+        "--max-seq-len-override",
+        "65536",
+        "--page-size",
+        "1",
+        "--num-tokens",
+        "65536",
+        "--max-prefill-length",
+        "512",
+        "--cuda-graph-max-bs",
+        "0",
+        "--cache-type",
+        "naive",
+        "--attention-backend",
+        "triton",
+        "--memory-ratio",
+        "0.80",
+        "--sampling-defaults",
+        "none",
+        "--max-output-tokens",
+        "2048",
+        "--frontend-generation-limit",
+        "1"
+      ],
+      "state_manifest": "C:\\Users\\Iskandar\\FreeTokenROCm\\FreeTokenROCm\\repos\\wt-triton38-align-20260928\\scripts\\windows-rocm64k\\accepted-source.rocm1010.json",
+      "resource_guard": "C:\\Users\\Iskandar\\FreeTokenROCm\\.local\\service64k-rocm1010\\runs\\ctx64k-20261013-175201-f7e1a6ea\\resource-guard.json",
+      "cache_stable_triton_knob": true,
+      "started_at": "2026-10-13T17:52:05.7606659+03:00",
+      "run_dir": "C:\\Users\\Iskandar\\FreeTokenROCm\\.local\\service64k-rocm1010\\runs\\ctx64k-20261013-175201-f7e1a6ea",
+      "observer_pid": 27684,
+      "observer_start_filetime": 134363767257647586,
+      "stopped_at": "2026-10-13T19:08:24.2634893+03:00"
+    }
+  },
+  "raw_files_sha256": {
+    "rocm10-20260926/research-refresh-20261011-audit/deps-upgrade-20261012/full-series-20261013-1749/execution.json": "990540c7e78af256052de201a158d1a8f683eb173c256b9ce82ba797fcee01c9",
+    "rocm10-20260926/research-refresh-20261011-audit/deps-upgrade-20261012/full-series-20261013-1749/report.json": "2be66db467d3770057000fafae557dbfb720f57e4f52ca4d8537be0992a23ab6",
+    "rocm10-20260926/research-refresh-20261011-audit/deps-upgrade-20261012/full-series-20261013-1749/full_client.py": "03a151dd577b39cce4d26c5dbb3bc8f4242c506935ea0a811e00acb3da270d8d",
+    "rocm10-20260926/research-refresh-20261011-audit/deps-upgrade-20261012/full-series-20261013-1749/run_full.ps1": "19afd63ccb2bb430f7f0104c21ed162c547e2a3419e0e3d458ea568171d98efc",
+    "rocm10-20260926/research-refresh-20261011-audit/deps-upgrade-20261012/full-series-20261013-1749/ctx64k_qualification_client.py": "b57d56f68a860f9d371c93f5c845e873bebe2caecca67ed9782ff7c6ca4bb448",
+    "rocm10-20260926/research-refresh-20261011-audit/deps-upgrade-20261012/full-series-20261013-1749/ctx64k_stage3_warm_client.py": "0acacb8085753d845907a5e545fbb257e34432f9567bb62ba536890328f4340c",
+    "rocm10-20260926/research-refresh-20261011-audit/deps-upgrade-20261012/full-series-20261013-1749/harness-hashes.json": "3745064b53fa5caab74151c6c8ca42cb86b48214f3d75e1c60d952cdf8d5b951",
+    "rocm10-20260926/research-refresh-20261011-audit/deps-upgrade-20261012/full-series-20261013-1749/summarize.py": "09b29405b5656d2449f3f80e13f5ca5125e14f5bb555811eedd1f149e59a409d",
+    "rocm10-20260926/research-refresh-20261011-audit/deps-upgrade-20261012/full-series-20261013-1749/soak-memory-growth-validated.json": "0de5c6c467e92c096d388c6e03d76f88ca45f5ddf4867d44f5d8578e1727a9a6",
+    "rocm10-20260926/research-refresh-20261011-audit/deps-upgrade-20261012/full-series-20261013-1749/status-after-stop.json": "bc1f60f4732cf3c0dd49cf60e3b6a64e94ccbf521deafe8563f4dfa65c43b2e5",
+    "rocm10-20260926/research-refresh-20261011-audit/deps-upgrade-20261012/full-series-20261013-1749/stop-controller.txt": "79a57aa997828b72b8fe0355d736d272eaa403c84465b80c2ebb911323a96921",
+    "rocm10-20260926/research-refresh-20261011-audit/deps-upgrade-20261012/full-series-20261013-1749/coverage/summary.json": "562ccc4444c3f5a2f89606f8aba9b8cdfd55c26ce4255083755018d6b96aed7c",
+    "rocm10-20260926/research-refresh-20261011-audit/deps-upgrade-20261012/full-series-20261013-1749/coverage/measurements.jsonl": "4771dad6ca1f60c6ae3b018e5cd94160352a2b2c04bec67126e8ebacc35fecfd",
+    "rocm10-20260926/research-refresh-20261011-audit/deps-upgrade-20261012/full-series-20261013-1749/coverage/protocol.json": "53f52c2216a273fecf963db91059bc3a5ea6f524476ab03d161c8fd96b92d7cc",
+    "rocm10-20260926/research-refresh-20261011-audit/deps-upgrade-20261012/full-series-20261013-1749/benchmark/summary.json": "617ed1920440328aaabeae4fa891165f5316bbc8424cc0d4ca2cbe68c1d30415",
+    "rocm10-20260926/research-refresh-20261011-audit/deps-upgrade-20261012/full-series-20261013-1749/benchmark/measurements.jsonl": "27a7f61f28dbf8d21bfb1a62ede44820a9c4f5949a97cf7fb6a59d593c14fc43",
+    "rocm10-20260926/research-refresh-20261011-audit/deps-upgrade-20261012/full-series-20261013-1749/benchmark/protocol.json": "53f52c2216a273fecf963db91059bc3a5ea6f524476ab03d161c8fd96b92d7cc",
+    "rocm10-20260926/research-refresh-20261011-audit/deps-upgrade-20261012/full-series-20261013-1749/long-speed/summary.json": "614afa6131135f2450d21a41a5103a7df14c3ed28a28531eb2c865a7433783f9",
+    "rocm10-20260926/research-refresh-20261011-audit/deps-upgrade-20261012/full-series-20261013-1749/long-speed/measurements.jsonl": "47146dce39d2d89cf08be92edc7c51ccb464f6ca216f75dce573c2f8e9f1ccd0",
+    "rocm10-20260926/research-refresh-20261011-audit/deps-upgrade-20261012/full-series-20261013-1749/long-speed/protocol.json": "53f52c2216a273fecf963db91059bc3a5ea6f524476ab03d161c8fd96b92d7cc",
+    "rocm10-20260926/research-refresh-20261011-audit/deps-upgrade-20261012/full-series-20261013-1749/queue/summary.json": "962ec88f3fe3194cc720cefafa0a25be002aab007fd00fbda12849d9b8e2c030",
+    "rocm10-20260926/research-refresh-20261011-audit/deps-upgrade-20261012/full-series-20261013-1749/queue/measurements.jsonl": "81b415d5e24aecce28a8ab8fde87198bc4710c1e91261b763e4e32a865b3bb69",
+    "rocm10-20260926/research-refresh-20261011-audit/deps-upgrade-20261012/full-series-20261013-1749/queue/protocol.json": "53f52c2216a273fecf963db91059bc3a5ea6f524476ab03d161c8fd96b92d7cc",
+    "rocm10-20260926/research-refresh-20261011-audit/deps-upgrade-20261012/full-series-20261013-1749/soak/summary.json": "01a978ac3006d4206badbb42da7ad30d541d55e59bb222e6bae5ad9122e85803",
+    "rocm10-20260926/research-refresh-20261011-audit/deps-upgrade-20261012/full-series-20261013-1749/soak/measurements.jsonl": "9a718223432422ead9dfe41f715119497694d3e43d9ac23d28aed17c15b63c7e",
+    "rocm10-20260926/research-refresh-20261011-audit/deps-upgrade-20261012/full-series-20261013-1749/soak/protocol.json": "53f52c2216a273fecf963db91059bc3a5ea6f524476ab03d161c8fd96b92d7cc",
+    ".local/service64k-rocm1010/runs/ctx64k-20261013-175201-f7e1a6ea/observer.jsonl": "51c0a08fd8ef8e7f852c529899eb254ce486f612e428d3253d5fefc8b307645c",
+    ".local/service64k-rocm1010/runs/ctx64k-20261013-175201-f7e1a6ea/compiler-init.jsonl": "b3af2cbed73263430a2030b34b0d8f9f128de7379a6d0dc470544b70f266e4af",
+    ".local/service64k-rocm1010/runs/ctx64k-20261013-175201-f7e1a6ea/startup-result.json": "185b415f71a16ed7fd5fe1581c06e245128cc1bc68fd5690ddcec4a4bcea3c01",
+    ".local/service64k-rocm1010/runs/ctx64k-20261013-175201-f7e1a6ea/server-logs/stdout.log": "b85be3fb9375adba445b46e1a157b41f3aac365467fc806929c2e85f26edce77",
+    ".local/service64k-rocm1010/runs/ctx64k-20261013-175201-f7e1a6ea/server-logs/stderr.log": "cba01ef9e998021aa45ad7633c7f2ee43d3748a48232d50cbef592adce173bea"
+  },
+  "harness_correction": "raw PowerShell ordered-map aggregate null; independently sum recorded per-process private_bytes; raw evidence retained"
+}

@@ -1,8 +1,8 @@
 {
   "schema": 1,
   "kind": "managed-windows-rocm1010-profile",
-  "recorded_at_utc": "2026-10-13T14:25:54.950303+00:00",
-  "branch": "integration/rocm1010-upgrade",
+  "recorded_at_utc": "2026-10-13T16:29:52.756031+00:00",
+  "branch": "main",
   "base_commit": "13687fc305a6131a5f6319aa840ec0a584d97aa3",
   "ordinary_profile_selected": true,
   "runtime": "rocm1010",
@@ -104,10 +104,14 @@
     "load_16k_passed": true,
     "kv_released": true,
     "managed_stop_passed": true,
-    "post_load_short_executed": false,
-    "full_model_series_run": false,
-    "long64k_run": false,
-    "performance_gain_established": false
+    "post_load_short_executed": true,
+    "full_model_series_run": true,
+    "long64k_run": true,
+    "performance_gain_established": false,
+    "controller_and_bootstrap_cpu_gate_passed": 61,
+    "full_series_functional_resource_lifecycle_passed": true,
+    "performance_qualified": false,
+    "post_soak_speed_drop_observed": true
   },
   "model_records": {
     "short": {
@@ -196,5 +200,78 @@
     "reviewed-release.rocm1010.json": "3f80ea04fb4cb83f05bfd630e6b7087dda4ce10f64532d6f8c498d837bbb55f3",
     "accepted-source.rocm1010.json": "5e87c47dd34e9f287a7f48c3ba68f4f0229080c2df6658156b41c697e124d7fd",
     "evidence/rocm1010-short.json": "96bdfe7f8590975fee8c71ba38f428ec6073b7fa7ee327149c6635a825d76cb6"
+  },
+  "upgrade_commit": "f755ec7cee78cfec83e1449bce6bfacc8e28238f",
+  "full_series": {
+    "proof": "windows-rocm1010-full-series-20261013.json",
+    "head": "f755ec7cee78cfec83e1449bce6bfacc8e28238f",
+    "requests": 353,
+    "run_dir": "C:\\Users\\Iskandar\\FreeTokenROCm\\.local\\service64k-rocm1010\\runs\\ctx64k-20261013-175201-f7e1a6ea",
+    "blocks": {
+      "coverage": {
+        "passed": true,
+        "requests": 38,
+        "elapsed_s": 751.2618420124054,
+        "control_before_tps": 36.76124045622772,
+        "control_after_tps": 38.57566765578413,
+        "control_recovery_ratio": 1.049357072205354,
+        "kv_used_at_end": 0,
+        "raw_summary_sha256": "562ccc4444c3f5a2f89606f8aba9b8cdfd55c26ce4255083755018d6b96aed7c"
+      },
+      "benchmark": {
+        "passed": true,
+        "requests": 66,
+        "elapsed_s": 183.0480239391327,
+        "control_before_tps": 39.9385560675907,
+        "control_after_tps": 50.728407908368034,
+        "control_recovery_ratio": 1.2701612903209856,
+        "kv_used_at_end": 0,
+        "raw_summary_sha256": "617ed1920440328aaabeae4fa891165f5316bbc8424cc0d4ca2cbe68c1d30415"
+      },
+      "long-speed": {
+        "passed": true,
+        "requests": 28,
+        "elapsed_s": 822.8796215057373,
+        "control_before_tps": 50.72840790846406,
+        "control_after_tps": 50.02565418161816,
+        "control_recovery_ratio": 0.9861467419179808,
+        "kv_used_at_end": 0,
+        "raw_summary_sha256": "614afa6131135f2450d21a41a5103a7df14c3ed28a28531eb2c865a7433783f9"
+      },
+      "queue": {
+        "passed": true,
+        "requests": 24,
+        "elapsed_s": 525.8931043148041,
+        "control_before_tps": 49.916805324493446,
+        "control_after_tps": 49.92319508445119,
+        "control_recovery_ratio": 1.0001280081911534,
+        "kv_used_at_end": 0,
+        "raw_summary_sha256": "962ec88f3fe3194cc720cefafa0a25be002aab007fd00fbda12849d9b8e2c030"
+      },
+      "soak": {
+        "passed": true,
+        "requests": 197,
+        "elapsed_s": 2110.122535467148,
+        "control_before_tps": 50.01923816858162,
+        "control_after_tps": 39.062500000012754,
+        "control_recovery_ratio": 0.7809495192301613,
+        "kv_used_at_end": 0,
+        "raw_summary_sha256": "01a978ac3006d4206badbb42da7ad30d541d55e59bb222e6bae5ad9122e85803",
+        "cycles": 11,
+        "soak_s": 1837.5159999999887,
+        "idle_s": 120
+      }
+    },
+    "minimum_resources_gib": {
+      "free_physical_gib": 23.519,
+      "free_commit_gib": 10.695,
+      "gpu_local_free_gib": 6.598
+    },
+    "soak_memory_growth_gib": -0.344970703125,
+    "functional_resource_lifecycle_passed": true,
+    "performance_qualified": false,
+    "post_soak_control_change_percent": -21.905048076983867,
+    "speed_drop_cause_established": false,
+    "clean_stop": true
   }
 }

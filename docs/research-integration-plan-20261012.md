@@ -346,3 +346,14 @@ performance gain не заявлен. [Profile](../constraints/windows-rocm1010-
 **Запись12.10.2026, этап8:** одно и то же задание24/391tokens; decode37.20/37.42/37.56TPS при context/KV4096/8192/65536. Selected74packages, old native preserved, sourceoptionsdefaultoff, all9outputsidentical, all3Stopclean. 64K/4K+0.97%, 64K/8K+0.37%; это малыйcapacityсрез, не isolatedintegrationgain. Scope/reproducibility/release-marker границы в [отчёте этапа8](integration-research-stage8-20261012.md).
 
 **Обычный запуск12.10.2026:** итоговое ревью завершено; source476files сохранён. Default64K/qualifiedPython74 подключён через working-release schema2, gate18 + sourceCPU9 прошли, один application request24/391 и cleanStop подтверждены. Штатный readiness request учитывается отдельно. История quarantine сохранена; Git commit/merge подготовлены. [Отчёт и запуск](integration-release-prep-20261012.md).
+
+**Полная серия13.10.2026:** upgrade commit `f755ec7c` слит в `main` и запушен
+в пользовательский fork. New native10.1/post29 с обязательным compiler hook
+проверен из штатного launcher:353requests, exact64K boundary, repeated long
+decode,6queue/cancel pairs,1837,5s/11cycles load,120s idle и cleanStop.
+CPU61passed перед слиянием. Корректность/resources/lifecycle прошли;
+matched control после soak50,02→39,06TPS (−21,91%), performance qualification
+открыта, причина снижения пока неизвестна. Private memory−0,34497GiB
+пересчитана из raw per-process samples; raw null aggregate не использован
+как proof. [Отчёт](rocm1010-full-series-20261013.md),
+[manifest](../constraints/windows-rocm1010-full-series-20261013.json).
