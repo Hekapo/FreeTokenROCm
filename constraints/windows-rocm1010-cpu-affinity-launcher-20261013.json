@@ -1,0 +1,428 @@
+{
+  "schema": 1,
+  "kind": "backend-cpu-affinity-launcher-short-smoke",
+  "recorded_at_utc": "2026-10-13T22:07:16.186081+03:00",
+  "status": "short-smoke-and-stop-passed",
+  "source_head": "3b8bdecbfb107cd0e55f79cc3d57a410c9bcb107",
+  "branch": "integration/backend-cpu-affinity",
+  "runtime": "rocm1010",
+  "context_capacity": 65536,
+  "kv_capacity": 65536,
+  "backend_cpu_affinity": "one_per_core",
+  "backend_receipt": {
+    "mode": "one_per_core",
+    "original_mask": 65535,
+    "applied_mask": 21845,
+    "system_mask": 65535,
+    "group_count": 1,
+    "core_masks": [
+      3,
+      12,
+      48,
+      192,
+      768,
+      3072,
+      12288,
+      49152
+    ],
+    "logical_processors": 8,
+    "process_affinity_changed": true,
+    "gpu_runtime_loaded": true,
+    "pid": 17400,
+    "parent_pid": 14088,
+    "creation_filetime": 134363917516949273,
+    "role": "backend",
+    "process_name": "freetoken-TP0-scheduler",
+    "event": "applied",
+    "before_gpu_initialization": true,
+    "at": "2026-10-13T22:02:39.082348+03:00"
+  },
+  "nonbackend_process_placement_unchanged": true,
+  "scope": "frozen repository launcher copy; readiness plus one warm and three measured 24/391 requests; Stop",
+  "full_model_series_run": false,
+  "long_prefill_qualified": false,
+  "long_stall_fixed": false,
+  "cpu_checks": {
+    "passed": 96,
+    "time_s": 17.631
+  },
+  "smoke": {
+    "requests": 4,
+    "warmups": 1,
+    "measured": 3,
+    "per_request_tps": [
+      45.88235294117647,
+      45.96346493820178,
+      45.46514339002196
+    ],
+    "median_decode_tps": 45.88235294117647,
+    "median_ttft_s": 0.75,
+    "elapsed_s": 38.01600000000326
+  },
+  "live_process_affinities": [
+    {
+      "pid": 2528,
+      "parent_pid": 16704,
+      "command": "\"C:\\Users\\Iskandar\\FreeTokenROCm\\.venvs\\freetoken-rocm1010-triton38post29-py312\\Scripts\\python.exe\" -B C:\\Users\\Iskandar\\FreeTokenROCm\\rocm10-20260926\\research-refresh-20261011-audit\\deps-upgrade-20261012\\cpu-affinity-launcher-20261013\\short-one-per-coreb\\runtime\\cached_stats_launcher.py serve --model C:\\models\\Qwen_Qwen3.6-35B-A3B-Q4_1.gguf --served-model-name qwen3.6-35b-a3b-q4_1 --host 127.0.0.1 --port 1919 --tensor-parallel-size 1 --dtype bfloat16 --moe-backend offload --moe-cache-size 2048 --moe-cache-policy lru --expert-load serial --max-running-requests 1 --max-seq-len-override 65536 --page-size 1 --num-tokens 65536 --max-prefill-length 512 --cuda-graph-max-bs 0 --cache-type naive --attention-backend triton --memory-ratio 0.80 --sampling-defaults none --max-output-tokens 2048 --frontend-generation-limit 1",
+      "creation_filetime": 134363917366473704,
+      "affinity_mask": 65535
+    },
+    {
+      "pid": 20112,
+      "parent_pid": 2528,
+      "command": "\\??\\C:\\Windows\\system32\\conhost.exe 0x4",
+      "creation_filetime": 134363917366499050,
+      "affinity_mask": 65535
+    },
+    {
+      "pid": 14088,
+      "parent_pid": 2528,
+      "command": "\"C:\\Users\\Iskandar\\AppData\\Local\\Programs\\Python\\Python312\\python.exe\" -B C:\\Users\\Iskandar\\FreeTokenROCm\\rocm10-20260926\\research-refresh-20261011-audit\\deps-upgrade-20261012\\cpu-affinity-launcher-20261013\\short-one-per-coreb\\runtime\\cached_stats_launcher.py serve --model C:\\models\\Qwen_Qwen3.6-35B-A3B-Q4_1.gguf --served-model-name qwen3.6-35b-a3b-q4_1 --host 127.0.0.1 --port 1919 --tensor-parallel-size 1 --dtype bfloat16 --moe-backend offload --moe-cache-size 2048 --moe-cache-policy lru --expert-load serial --max-running-requests 1 --max-seq-len-override 65536 --page-size 1 --num-tokens 65536 --max-prefill-length 512 --cuda-graph-max-bs 0 --cache-type naive --attention-backend triton --memory-ratio 0.80 --sampling-defaults none --max-output-tokens 2048 --frontend-generation-limit 1",
+      "creation_filetime": 134363917366671226,
+      "affinity_mask": 65535
+    },
+    {
+      "pid": 17400,
+      "parent_pid": 14088,
+      "command": "\"C:\\Users\\Iskandar\\AppData\\Local\\Programs\\Python\\Python312\\python.exe\" \"-B\" \"-s\" \"-c\" \"from multiprocessing.spawn import spawn_main; spawn_main(parent_pid=14088, pipe_handle=2480)\" \"--multiprocessing-fork\"",
+      "creation_filetime": 134363917516949273,
+      "affinity_mask": 21845
+    },
+    {
+      "pid": 26712,
+      "parent_pid": 14088,
+      "command": "\"C:\\Users\\Iskandar\\AppData\\Local\\Programs\\Python\\Python312\\python.exe\" \"-B\" \"-s\" \"-c\" \"from multiprocessing.spawn import spawn_main; spawn_main(parent_pid=14088, pipe_handle=2488)\" \"--multiprocessing-fork\"",
+      "creation_filetime": 134363917518863789,
+      "affinity_mask": 65535
+    }
+  ],
+  "startup": {
+    "cold_start_s": 156.1,
+    "resources_before": {
+      "at": "2026-10-13T22:02:16.5383622+03:00",
+      "free_physical_gib": 46.491,
+      "free_commit_gib": 43.346,
+      "gpu_local_used_gib": 1.017,
+      "gpu_local_free_gib": 14.792
+    }
+  },
+  "startup_memory_exception": {
+    "at_utc": "2026-10-13T22:01:46.869791+03:00",
+    "user_authorization": "сейчас я освободил все что мог, разрешаю продолжать так",
+    "scope": "one short 64K feature startup, readiness request, one warm counting request, three measured counting requests, Stop",
+    "original_startup_commit_floor_gib": 45,
+    "reported_before_authorization_gib": 43.7,
+    "observed_after_authorization_gib": 40.769,
+    "one_start_commit_floor_gib": 40,
+    "production_profile_changed": false,
+    "runtime_floors": {
+      "free_physical_gib": 12,
+      "free_commit_gib": 4,
+      "gpu_local_free_gib": 3
+    },
+    "recovery_floors": {
+      "free_physical_gib": 38,
+      "free_commit_gib": 28,
+      "gpu_local_free_gib": 14
+    },
+    "full_series": false,
+    "long_prefill": false,
+    "claim": "Start atomically creates start-consumed.lock under the shared service mutex; a second Start is rejected",
+    "retry_of_same_authorized_short_check": true,
+    "previous_attempt": "short-one-per-core: readiness and CPU placement passed; counting client omitted stats_poll_s; clean Stop",
+    "restore": "The wrapper restores the copied startup floor and checker to 45 after Stop; original files are preserved",
+    "final_prelaunch_resources": {
+      "at": "2026-10-13T22:02:08.8875383+03:00",
+      "free_physical_gib": 46.626,
+      "free_commit_gib": 43.482,
+      "gpu_local_used_gib": 1.024,
+      "gpu_local_free_gib": 14.785
+    }
+  },
+  "copied_runtime_differences": "Source-root binding and single-Start claim in service64k.ps1; temporary startup-only commit floor 40; source/backend/launch code unchanged",
+  "production_runtime_hashes": [
+    {
+      "path": "service64k.ps1",
+      "sha256": "71d50138c77c45b8c9dfcc51466d2d1d54d04bfd8a3ee85c35551c13f9c381c6"
+    },
+    {
+      "path": "service64k_lifecycle.ps1",
+      "sha256": "0800385740342e5a858d5f7f3b490436ba51f9db913d6d7240d3842013d16986"
+    },
+    {
+      "path": "service64k_paths.ps1",
+      "sha256": "73f1732ab9d79e44db159ab956136da6210e659136a25efd0b407b6e73eda6fe"
+    },
+    {
+      "path": "service64k_release.ps1",
+      "sha256": "760e9492d7d15c981917973da76af720511feae3aec9b0a2f6d7665ef9f2bfaa"
+    },
+    {
+      "path": "launch64k.ps1",
+      "sha256": "06f1731e26b443656818dfaee39fc5d772beb0de3a2171e340f7446f84f10fba"
+    },
+    {
+      "path": "service38_safety.ps1",
+      "sha256": "e2b5620ea8b206f5e3b70a6690acea9c2816e2f268f0256f0d1d3dab86ee42c1"
+    },
+    {
+      "path": "service38_probes.ps1",
+      "sha256": "51d42a24f32a8751438ec077249c33817cdc32cdbf4e4a9900c8b2d4d3f54adf"
+    },
+    {
+      "path": "service38_probe_native.cs",
+      "sha256": "f05c52644b6b363c994f16571fed874e1d0a73e19d224a28c7f2441db88a9111"
+    },
+    {
+      "path": "service38_gpu_identity.cs",
+      "sha256": "a4ba83ea54be1140628b7f96fe6d0c0009a08d4bf17f5b6aa8534ab371c1eedf"
+    },
+    {
+      "path": "query_service38.ps1",
+      "sha256": "eb7f75d4b9eb52be454a7f93437d019bd68892e9e809c852ab05d29eacc7827e"
+    },
+    {
+      "path": "observe_service38.ps1",
+      "sha256": "ec01b870396e2517175e11faf9191807e24207fe33abf09d47b18960911d58c7"
+    },
+    {
+      "path": "stable_triton_knob.py",
+      "sha256": "58cc3684ea1238aca956dc8abf933b1afe0b95c2aab05afed9667c71ac2a4b8e"
+    },
+    {
+      "path": "cached_stats_launcher.py",
+      "sha256": "ebf1576130a695b1f3d558103fa74c13fb5446d5a3389cd9c94e9e1b5e612be0"
+    },
+    {
+      "path": "backend_cpu_affinity.py",
+      "sha256": "8f5d771495ca51d5ec8549fb2f8781154cd0e3238f6d60994441aa47e3a906fc"
+    },
+    {
+      "path": "reviewed_source.py",
+      "sha256": "eff1aa46f5e6afc271bd5615742455537850eb679cc0f3465d40e8b9ce5f08f3"
+    },
+    {
+      "path": "profile.json",
+      "sha256": "806e8d0718cb8e1a405dd1af8fb9b73c66814dd59680d737c403f1ac95d1ac84"
+    },
+    {
+      "path": "quarantine-history.json",
+      "sha256": "24a46ae2dbb09754dc3be67f84eff311b71984a88c3db445a12d6270bb2be3eb"
+    },
+    {
+      "path": "accepted-source.rocm1010.json",
+      "sha256": "5e87c47dd34e9f287a7f48c3ba68f4f0229080c2df6658156b41c697e124d7fd"
+    },
+    {
+      "path": "rocm1010/compiler_safety.py",
+      "sha256": "c30250abfaa0ee14e744e84628458d0f423d82f63759525c5be0591fbd63b19d"
+    },
+    {
+      "path": "rocm1010/sitecustomize.py",
+      "sha256": "d29787e4678121e68bd7bc2e38f07377abd1785850d0491d0d0a8ddc22b1dfcf"
+    }
+  ],
+  "production_profile_floor_gib": 45,
+  "copied_profile_floor_restored_gib": 45,
+  "resource_sample_count": 69,
+  "sampled_minimum_gib": {
+    "free_physical_gib": 21.206,
+    "free_commit_gib": 8.983,
+    "gpu_local_free_gib": 6.575
+  },
+  "observer_server_log_events": [
+    {
+      "kind": "server_log",
+      "at": "2026-10-13T22:05:05.2336818+03:00",
+      "line": "\u001b[1m[2026-10-13|22:05:05|core|rank=0]\u001b[0m \u001b[32mINFO    \u001b[0m Prefill batch, #new-seq: 1, #new-token: 12, #cached-token: 0, token usage: 0.00, #running-req: 1, #queue-req: 0, input throughput (token/s): 0.68"
+    },
+    {
+      "kind": "server_log",
+      "at": "2026-10-13T22:05:13.2233809+03:00",
+      "line": "\u001b[1m[2026-10-13|22:05:13|core|rank=0]\u001b[0m \u001b[32mINFO    \u001b[0m Prefill batch, #new-seq: 1, #new-token: 24, #cached-token: 0, token usage: 0.00, #running-req: 1, #queue-req: 0, input throughput (token/s): 3.05"
+    },
+    {
+      "kind": "server_log",
+      "at": "2026-10-13T22:05:22.3195332+03:00",
+      "line": "\u001b[1m[2026-10-13|22:05:22|core|rank=0]\u001b[0m \u001b[32mINFO    \u001b[0m Prefill batch, #new-seq: 1, #new-token: 24, #cached-token: 0, token usage: 0.00, #running-req: 1, #queue-req: 0, input throughput (token/s): 2.64"
+    },
+    {
+      "kind": "server_log",
+      "at": "2026-10-13T22:05:31.4926582+03:00",
+      "line": "\u001b[1m[2026-10-13|22:05:31|core|rank=0]\u001b[0m \u001b[32mINFO    \u001b[0m Prefill batch, #new-seq: 1, #new-token: 24, #cached-token: 0, token usage: 0.00, #running-req: 1, #queue-req: 0, input throughput (token/s): 2.59"
+    },
+    {
+      "kind": "server_log",
+      "at": "2026-10-13T22:05:40.8871342+03:00",
+      "line": "\u001b[1m[2026-10-13|22:05:40|core|rank=0]\u001b[0m \u001b[32mINFO    \u001b[0m Prefill batch, #new-seq: 1, #new-token: 24, #cached-token: 0, token usage: 0.00, #running-req: 1, #queue-req: 0, input throughput (token/s): 2.60"
+    }
+  ],
+  "resources_after_stop": {
+    "at": "2026-10-13T22:05:55.6091516+03:00",
+    "free_physical_gib": 46.489,
+    "free_commit_gib": 43.328,
+    "gpu_local_used_gib": 1.0,
+    "gpu_local_free_gib": 14.809
+  },
+  "clean_stop": true,
+  "process_identities_after_stop": {
+    "at": "2026-10-13T22:06:29.7127118+03:00",
+    "recorded_identities": 23,
+    "remaining_owned_processes": [],
+    "identities": [
+      {
+        "pid": 14088,
+        "creation_filetime": 134363917366671226
+      },
+      {
+        "pid": 28136,
+        "creation_filetime": 134363810460000000
+      },
+      {
+        "pid": 26712,
+        "creation_filetime": 134363809510000000
+      },
+      {
+        "pid": 23636,
+        "creation_filetime": 134363809680000000
+      },
+      {
+        "pid": 14088,
+        "creation_filetime": 134363809360000000
+      },
+      {
+        "pid": 18664,
+        "creation_filetime": 134363917366566764
+      },
+      {
+        "pid": 11688,
+        "creation_filetime": 134363809680000000
+      },
+      {
+        "pid": 17924,
+        "creation_filetime": 134363810040000000
+      },
+      {
+        "pid": 2528,
+        "creation_filetime": 134363917366473704
+      },
+      {
+        "pid": 21332,
+        "creation_filetime": 134363809680000000
+      },
+      {
+        "pid": 23660,
+        "creation_filetime": 134363809680000000
+      },
+      {
+        "pid": 2528,
+        "creation_filetime": 134363809360000000
+      },
+      {
+        "pid": 17400,
+        "creation_filetime": 134363917516949273
+      },
+      {
+        "pid": 17400,
+        "creation_filetime": 134363809510000000
+      },
+      {
+        "pid": 12760,
+        "creation_filetime": 134363811000000000
+      },
+      {
+        "pid": 12000,
+        "creation_filetime": 134363809680000000
+      },
+      {
+        "pid": 23076,
+        "creation_filetime": 134363810030000000
+      },
+      {
+        "pid": 26712,
+        "creation_filetime": 134363917518863789
+      },
+      {
+        "pid": 23464,
+        "creation_filetime": 134363809680000000
+      },
+      {
+        "pid": 9852,
+        "creation_filetime": 134363809680000000
+      },
+      {
+        "pid": 20112,
+        "creation_filetime": 134363809360000000
+      },
+      {
+        "pid": 20112,
+        "creation_filetime": 134363917366499050
+      },
+      {
+        "pid": 11480,
+        "creation_filetime": 134363810030000000
+      }
+    ]
+  },
+  "compiler_workaround_unchanged": true,
+  "speed_comparison_limit": "one warmup and three samples; prior 32-warmup A/B controls have a different warmup and host load; no SDK gain or long-run speed claim",
+  "initial_harness_failure": {
+    "directory": "short-one-per-core",
+    "error": "missing stats_poll_s in the counting client",
+    "readiness_and_affinity_passed": true,
+    "clean_stop": true,
+    "preserved": true
+  },
+  "evidence_sha256_relative_to_workspace": {
+    "rocm10-20260926/research-refresh-20261011-audit/deps-upgrade-20261012/cpu-affinity-launcher-20261013/cpu-checks-final.xml": "e98b3d6374fb452a9fc203cd6af1b996250d9b18ac0e61d56efff5409b7314f2",
+    "rocm10-20260926/research-refresh-20261011-audit/deps-upgrade-20261012/cpu-affinity-launcher-20261013/prepare_short.py": "583253938fa962d87be983734c5df7a3e0eff9c44bb7e75872ee6c220d8d436b",
+    "rocm10-20260926/research-refresh-20261011-audit/deps-upgrade-20261012/cpu-affinity-launcher-20261013/run_short.ps1": "6999457a3a71f320a368b723ac86435b047070384243361ab7602e0f088fe1e3",
+    "rocm10-20260926/research-refresh-20261011-audit/deps-upgrade-20261012/cpu-affinity-launcher-20261013/short_client.py": "adf451faadbe2de6a89f2ffe32ffd9b3867812f268e134bca7c4abd204bab77d",
+    "rocm10-20260926/research-refresh-20261011-audit/deps-upgrade-20261012/cpu-affinity-launcher-20261013/record_short.py": "8171506019ade1647dab723d1ac7d0380b391e2f2dbd4576706e78c70b04a084",
+    "rocm10-20260926/research-refresh-20261011-audit/deps-upgrade-20261012/cpu-affinity-launcher-20261013/check_stopped_identities.ps1": "bd07fd0e5a320d8736ed26462c6bdbd7788d275bd84f23bd73337858ad7b5715",
+    "rocm10-20260926/research-refresh-20261011-audit/deps-upgrade-20261012/cpu-affinity-launcher-20261013/ctx64k_qualification_client.py": "b57d56f68a860f9d371c93f5c845e873bebe2caecca67ed9782ff7c6ca4bb448",
+    "rocm10-20260926/research-refresh-20261011-audit/deps-upgrade-20261012/cpu-affinity-launcher-20261013/ctx64k_stage3_warm_client.py": "0acacb8085753d845907a5e545fbb257e34432f9567bb62ba536890328f4340c",
+    "rocm10-20260926/research-refresh-20261011-audit/deps-upgrade-20261012/cpu-affinity-launcher-20261013/short-one-per-coreb/execution.json": "7a743c8327f31fe5f147074cef55c0861539b04766c0f9d0d93c18c9635f2843",
+    "rocm10-20260926/research-refresh-20261011-audit/deps-upgrade-20261012/cpu-affinity-launcher-20261013/short-one-per-coreb/one-shot-memory-authorization.json": "36f50ea2ad9ad53346aafb3da9311e028609f339c48188e79f7c9e7ddfb00ee3",
+    "rocm10-20260926/research-refresh-20261011-audit/deps-upgrade-20261012/cpu-affinity-launcher-20261013/short-one-per-coreb/verify-before-start.json": "56d8ef79a847ae4412617f7aa5356996f3ad8d9094e6f8ba5d8a921dba3136db",
+    "rocm10-20260926/research-refresh-20261011-audit/deps-upgrade-20261012/cpu-affinity-launcher-20261013/short-one-per-coreb/live-process-affinities.json": "d6ed59da2cce78295dc088653c2c8fa3974dc80b688c4baf8d486718b0b52acd",
+    "rocm10-20260926/research-refresh-20261011-audit/deps-upgrade-20261012/cpu-affinity-launcher-20261013/short-one-per-coreb/status-before-requests.json": "adc57d8434ed0c248167b8c157d2aae59ae9db2647d061c5ec7ac0efde5a558a",
+    "rocm10-20260926/research-refresh-20261011-audit/deps-upgrade-20261012/cpu-affinity-launcher-20261013/short-one-per-coreb/status-after-stop.json": "2e29e694221cad6670028ef549da6bc57f4671a59fced4b1495613ccc905bbf6",
+    "rocm10-20260926/research-refresh-20261011-audit/deps-upgrade-20261012/cpu-affinity-launcher-20261013/short-one-per-coreb/identity-check-after-stop.json": "b75c992c7fe22939805d55da5030f5f312b43a11ed28c9d8b0a2c27288832951",
+    "rocm10-20260926/research-refresh-20261011-audit/deps-upgrade-20261012/cpu-affinity-launcher-20261013/short-one-per-coreb/stop.txt": "79a57aa997828b72b8fe0355d736d272eaa403c84465b80c2ebb911323a96921",
+    "rocm10-20260926/research-refresh-20261011-audit/deps-upgrade-20261012/cpu-affinity-launcher-20261013/short-one-per-coreb/requests/summary.json": "9723f2b4159d0bb497a9ed7faffc5d6c5d0082cbf60bd217f8dc45de4add95f0",
+    "rocm10-20260926/research-refresh-20261011-audit/deps-upgrade-20261012/cpu-affinity-launcher-20261013/short-one-per-coreb/requests/measurements.jsonl": "6c29ca42ce252b5cbad4b0ad40f363c5b700291cb881d72aea24b7b0cfd8e1d5",
+    "rocm10-20260926/research-refresh-20261011-audit/deps-upgrade-20261012/cpu-affinity-launcher-20261013/short-one-per-core/execution.json": "4e3062832a323b5a7dac405a88d4c3086dc5a087ecc51b958b52bbbdf5c78e1c",
+    "rocm10-20260926/research-refresh-20261011-audit/deps-upgrade-20261012/cpu-affinity-launcher-20261013/short-one-per-core/client.stdout.log": "6b6e9a03ab2c94cecea48b697cf952ac3109302d2b7792103543388d43f100c3",
+    "rocm10-20260926/research-refresh-20261011-audit/deps-upgrade-20261012/cpu-affinity-launcher-20261013/short-one-per-core/client.stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "rocm10-20260926/research-refresh-20261011-audit/deps-upgrade-20261012/cpu-affinity-launcher-20261013/short-one-per-core/requests/failure.json": "5840c63973b9fedc1ba5d43a298b5a989050610b43f5e5a2ce50b3e0f3437133",
+    "rocm10-20260926/research-refresh-20261011-audit/deps-upgrade-20261012/cpu-affinity-launcher-20261013/short-one-per-core/status-after-stop.json": "adce4418570bb00dee331da211ca7e242572a629a0535fa1e469b87d7c5f23b5",
+    "rocm10-20260926/research-refresh-20261011-audit/deps-upgrade-20261012/cpu-affinity-launcher-20261013/short-one-per-core/short_client.before-stats-poll.py": "529c100bc1b03b4b60147eab6f9651df1c9019a3490b0c2fd9de0138dfbf2c4a",
+    "rocm10-20260926/research-refresh-20261011-audit/deps-upgrade-20261012/cpu-affinity-launcher-20261013/short-one-per-core/prepare_short.at-first-start.py": "bd137fda40a3125aae3bb76307c0e081e5e44043ae86fd300e141a4a9fadf858",
+    "rocm10-20260926/research-refresh-20261011-audit/deps-upgrade-20261012/cpu-affinity-launcher-20261013/short-one-per-core/run_short.at-first-start.ps1": "727b9390fe3ad259897458ae3b969b8ac88ed8e4df69932123d7423d67ab5c24",
+    "rocm10-20260926/research-refresh-20261011-audit/deps-upgrade-20261012/cpu-affinity-launcher-20261013/short-one-per-coreb/runtime-at-start/profile.json": "738883fda0a149fcc742890b8afdcdc29d6e89b4730cf4e6980d7b9c4a3642cd",
+    "rocm10-20260926/research-refresh-20261011-audit/deps-upgrade-20261012/cpu-affinity-launcher-20261013/short-one-per-coreb/runtime-at-start/reviewed-release.json": "03ad66aaca879166fa1299b2dfdb900fd661b4bd60567eef403ce9436d3bc47c",
+    "rocm10-20260926/research-refresh-20261011-audit/deps-upgrade-20261012/cpu-affinity-launcher-20261013/short-one-per-coreb/runtime-at-start/reviewed-release.rocm1010.json": "9181bd01624c7cc9e79d68d44e950357c7b3742265775ac23dd3f6824f9bcf8b",
+    "rocm10-20260926/research-refresh-20261011-audit/deps-upgrade-20261012/cpu-affinity-launcher-20261013/short-one-per-coreb/runtime-at-start/service64k.ps1": "b9b4e3434420accb721b4a418918e68edd37640d4d59cdb2e88b95d803a887b4",
+    "rocm10-20260926/research-refresh-20261011-audit/deps-upgrade-20261012/cpu-affinity-launcher-20261013/short-one-per-coreb/runtime-at-start/service64k_release.ps1": "9c42c4ed3b0b23e7a0cfb6fba121dbd5eb9512c5bb4a3d44292279e1afc722f5",
+    ".local/cpu64k-1013b/runs/ctx64k-20261013-220212-988110a5/startup-result.json": "5a374cd961262c962d1ed8d0822995e9b6f17d5c0a26d24410f44aace8df64d8",
+    ".local/cpu64k-1013b/runs/ctx64k-20261013-220212-988110a5/resource-guard.json": "02cb50139c3c062283bf229be21f60cf4776d4673d831065206ffb331ba89780",
+    ".local/cpu64k-1013b/runs/ctx64k-20261013-220212-988110a5/backend-affinity.jsonl": "41c642ea047380498178df7df14d2c085c82f27d8d3d166399f09475f26982a6",
+    ".local/cpu64k-1013b/runs/ctx64k-20261013-220212-988110a5/compiler-init.jsonl": "e2d29ec77bf84995c95ffeb1f3337c20be6021cfce88e07664f00fd748d22fcd",
+    ".local/cpu64k-1013b/runs/ctx64k-20261013-220212-988110a5/observer.jsonl": "bcff4865862368159b3f493ac439f339176bbb1117890437c54a7567a0297649",
+    ".local/cpu64k-1013b/runs/ctx64k-20261013-220212-988110a5/service-state.json": "eeff4fe2b941f3cf9f0e9966d174b5db2360df7ddf4a0eaaf8843a06905483fd",
+    ".local/cpu64k-1013b/runs/ctx64k-20261013-220212-988110a5/resources-after-stop.json": "c4193a870d5e922fdb842befc5ea22d197684915d8e286e297bd90dccb319482",
+    ".local/cpu64k-1013b/runs/ctx64k-20261013-220212-988110a5/server-logs/stdout.log": "68ae91ee763954af6af1e70a2ed97790b61d9a70ee4dfa2b04d008793646bc93",
+    ".local/cpu64k-1013b/runs/ctx64k-20261013-220212-988110a5/server-logs/stderr.log": "1371843184c41b7b62c66cda0bca5085047573f0ae8af88bd3b2983037e6b3dd",
+    "rocm10-20260926/research-refresh-20261011-audit/deps-upgrade-20261012/cpu-affinity-launcher-20261013/verify-after-activation.json": "5048598081809e8764d0d15cb7d340b5c69a9753a67e2c84a8b779588d34166b",
+    "rocm10-20260926/research-refresh-20261011-audit/deps-upgrade-20261012/cpu-affinity-launcher-20261013/verify-rocm1000-rollback.json": "8a8b2615999cd05084d2ecf84c8ded947299dcc28ceec2a9dec24cf8fabf8e70",
+    "rocm10-20260926/research-refresh-20261011-audit/deps-upgrade-20261012/cpu-affinity-launcher-20261013/status-after-activation.json": "a4ab6a9650f45d359f99d74a87e4046aadbf9fb1ce1e270c95f231ecb0c55641",
+    "rocm10-20260926/research-refresh-20261011-audit/deps-upgrade-20261012/cpu-affinity-launcher-20261013/config.json.activation.json": "373cf66a0b7d49560d20ed38f276865aefc34c370855d0de8c982060e811d60b",
+    "rocm10-20260926/research-refresh-20261011-audit/deps-upgrade-20261012/cpu-affinity-launcher-20261013/config-rocm1010.json.activation.json": "80304952e8032a05ac56cb64683fc3e447de6d1a84e42053515c2a4bfc73ce6b",
+    "rocm10-20260926/research-refresh-20261011-audit/deps-upgrade-20261012/cpu-affinity-launcher-20261013/config.json.before-affinity": "162604040c6f6472b7406a82292b92b5c005d26fe003f9be8cb060bbbb0abd6a",
+    "rocm10-20260926/research-refresh-20261011-audit/deps-upgrade-20261012/cpu-affinity-launcher-20261013/config-rocm1010.json.before-affinity": "162604040c6f6472b7406a82292b92b5c005d26fe003f9be8cb060bbbb0abd6a"
+  },
+  "ordinary_configuration_selected": true,
+  "default_configuration_schema": 3,
+  "ordinary_controller_state_after_activation": "STOPPED"
+}

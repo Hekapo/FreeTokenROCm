@@ -15,8 +15,9 @@ function Read-Service64kConfig([string]$Path) {
 function Resolve-Service64kConfig($Value) {
     $value = $Value
     $required = @('schema','venv_root','model_path','state_root','msvc_root','windows_sdk_root')
-    if ($value.schema -eq 2) { $required += 'runtime' }
-    if ($value.schema -notin @(1,2) -or @($value.PSObject.Properties).Count -ne $required.Count) {
+    if ($value.schema -in @(2,3)) { $required += 'runtime' }
+    if ($value.schema -eq 3) { $required += 'backend_cpu_affinity' }
+    if ($value.schema -notin @(1,2,3) -or @($value.PSObject.Properties).Count -ne $required.Count) {
         throw 'Unexpected local 64K configuration'
     }
     foreach ($name in $required) {
@@ -24,9 +25,14 @@ function Resolve-Service64kConfig($Value) {
     }
     if ($value.schema -eq 1) {
         $value | Add-Member -NotePropertyName runtime -NotePropertyValue 'rocm1000'
-        $value.schema = 2
+    }
+    if ($value.schema -ne 3) {
+        $value | Add-Member -NotePropertyName backend_cpu_affinity -NotePropertyValue 'windows'
+        $value.schema = 3
     }
     if ($value.runtime -cnotin @('rocm1000','rocm1010')) { throw 'Unknown pinned 64K runtime' }
+    if ($value.backend_cpu_affinity -isnot [string] -or
+        $value.backend_cpu_affinity -cnotin @('windows','one_per_core')) { throw 'Unknown backend CPU affinity mode' }
     foreach ($name in @('venv_root','model_path','state_root','msvc_root','windows_sdk_root')) {
         $value.$name = Resolve-Service64kPath $value.$name
     }
@@ -108,6 +114,7 @@ function Get-ProfileLaunchArgs {
     Write-Service38Json $guardFile (Get-Service64kGuard)
     return @{
         Label = 'reviewed-64k'; Runtime = (Get-Service64kRuntime); Src = $source64k; RunDir = $runDir; Port = $port;
+        BackendCpuAffinity = $config.backend_cpu_affinity;
         ModelPath = $config.model_path; Python = (Join-Path $venvRoot 'Scripts\python.exe');
         SdkDevel = (Join-Path $venvRoot 'Lib\site-packages\_rocm_sdk_devel');
         TritonSite = (Join-Path $venvRoot 'Lib\site-packages'); StateRoot = $stateRoot;
@@ -115,6 +122,67 @@ function Get-ProfileLaunchArgs {
         MsvcRoot = $config.msvc_root; WindowsSdkRoot = $config.windows_sdk_root;
         WindowsSdkVersion = '10.0.26100.0'
     }
+}
+
+function Get-Service64kCpuAffinityProbe([string]$Mode) {
+    if ($Mode -cnotin @('windows','one_per_core')) { throw 'Unknown backend CPU affinity mode' }
+    $result = & (Join-Path $venvRoot 'Scripts\python.exe') -B (Join-Path $labRoot 'backend_cpu_affinity.py') --probe $Mode
+    if ($LASTEXITCODE -ne 0) { throw 'Backend CPU affinity preflight failed' }
+    return $result | ConvertFrom-Json
+}
+
+function Set-Service64kCpuAffinity([string]$Mode) {
+    Assert-ProfileStartAllowed
+    $null = Read-Service38WorkingRelease
+    $probe = Get-Service64kCpuAffinityProbe $Mode
+    $config.backend_cpu_affinity = $Mode
+    Write-Service38Json $configPath $config
+    return [ordered]@{configured=$true;config=$configPath;backend_cpu_affinity=$Mode;cpu=$probe;model_started=$false}
+}
+
+function Assert-Service64kBackendCpuAffinity($State, [string]$Mode) {
+    $path = Join-Path $State.run_dir 'backend-affinity.jsonl'
+    $records = @(Get-Content -LiteralPath $path | ForEach-Object { $_ | ConvertFrom-Json } |
+        Where-Object { $_.event -eq 'applied' })
+    if ($records.Count -ne 1) { throw 'Missing or ambiguous backend CPU affinity receipt' }
+    $record = $records[0]
+    $owned = @(Get-Service38Tree $State | ForEach-Object { [int]$_.ProcessId })
+    if ($record.role -cne 'backend' -or $record.mode -cne $Mode -or
+        $record.process_name -cne 'freetoken-TP0-scheduler' -or
+        $record.before_gpu_initialization -ne $true -or
+        $owned -notcontains [int]$record.pid -or [int]$record.pid -eq [int]$State.pid) {
+        throw 'Backend CPU affinity receipt does not match the managed worker'
+    }
+    $backend = Get-Process -Id ([int]$record.pid) -ErrorAction Stop
+    $actualMask = [BitConverter]::ToUInt64([BitConverter]::GetBytes($backend.ProcessorAffinity.ToInt64()), 0)
+    if ($backend.StartTime.ToUniversalTime().ToFileTimeUtc() -ne [long]$record.creation_filetime -or
+        $actualMask -ne [uint64]$record.applied_mask) {
+        throw 'Backend PID/time or live CPU affinity differs from its receipt'
+    }
+    if ($Mode -eq 'windows' -and $record.applied_mask -ne $record.original_mask) {
+        throw 'Windows CPU placement was changed'
+    }
+    if ($Mode -eq 'one_per_core') {
+        if ($record.group_count -ne 1 -or -not @($record.core_masks).Count -or
+            (([uint64]$record.applied_mask -band [uint64]$record.original_mask) -ne [uint64]$record.applied_mask)) {
+            throw 'Incorrect backend CPU affinity topology or inherited mask'
+        }
+        $covered = [uint64]0
+        foreach ($core in $record.core_masks) {
+            if ([uint64]$core -eq 0 -or ([uint64]$core -band $covered) -ne 0) {
+                throw 'Invalid or overlapping physical core masks in backend receipt'
+            }
+            $covered = $covered -bor [uint64]$core
+            $eligible = [uint64]$core -band [uint64]$record.original_mask
+            $chosen = [uint64]$core -band [uint64]$record.applied_mask
+            if (($eligible -gt 0 -and ($chosen -eq 0 -or ($chosen -band ($chosen - 1)) -ne 0)) -or
+                ($eligible -eq 0 -and $chosen -ne 0)) { throw 'Backend affinity does not choose one LP per eligible core' }
+        }
+        if (($covered -band [uint64]$record.original_mask) -ne [uint64]$record.original_mask) {
+            throw 'Backend receipt topology does not cover its inherited affinity'
+        }
+    }
+    return $record
 }
 
 function Join-Service64kArguments([string[]]$Arguments) {

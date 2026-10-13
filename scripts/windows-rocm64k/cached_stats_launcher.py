@@ -20,6 +20,15 @@ if destination:
     with Path(destination).open('a',encoding='utf-8') as sink:
         sink.write(json.dumps(initialized)+'\n')
 
+    cpu_mode = os.environ.get('FT_BACKEND_CPU_AFFINITY')
+    if cpu_mode is not None:
+        cpu_output = os.environ.get('FT_BACKEND_CPU_AFFINITY_OUTPUT')
+        if not cpu_output:
+            raise RuntimeError('Managed backend CPU affinity output is required')
+        from freetoken.server import launch
+        from backend_cpu_affinity import install_scheduler_hook
+        install_scheduler_hook(launch, cpu_mode, Path(cpu_output), torch.cuda.is_initialized)
+
 if __name__=='__main__':
     if not destination:
         raise RuntimeError('Managed stable knob output is required')

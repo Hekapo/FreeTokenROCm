@@ -113,3 +113,25 @@ inherited stage2 evidence. One application request plus the built-in readiness
 probe and cleanStop passed. The stage8 profileJSON above remains a snapshot of
 that earlier acceptance; its managed-Start flags describe stage8, before this
 later activation. The current record is in the external lab/audit snapshot.
+
+## CPU affinity diagnostic (2026-10-13)
+
+[windows-rocm1010-cpu-affinity-diagnostic-20261013.json](windows-rocm1010-cpu-affinity-diagnostic-20261013.json)
+records the matched SDK comparison and two reversible backend affinity changes.
+All 84 short requests passed with 65536 KV capacity. Selecting one logical CPU
+per physical core improved decode by 25-28%; SDK version speedup was not shown.
+This diagnostic is not default-launch, long-prefill, or mixed-load acceptance.
+The earlier long probe stalled and its fault evidence is preserved. See the
+[investigation report](../docs/rocm1010-speed-investigation-20261013.md).
+
+## Backend affinity in the managed launcher (2026-10-13)
+
+[windows-rocm1010-cpu-affinity-launcher-20261013.json](windows-rocm1010-cpu-affinity-launcher-20261013.json)
+records the later repository implementation and short feature check: 96 CPU
+tests, readiness, four exact 24/391 counting requests, verified backend-only
+placement, and clean Stop with no remaining recorded processes. Median decode
+was45.88tokens/s. The startup commit exception applied only to a single-use
+frozen launcher copy; the production floor remains45GiB. Local ROCm10.1
+configurations now select `one_per_core`; ROCm10.0 rollback retains `windows`.
+Long-prefill and mixed-load behavior with this mode remain unqualified. See
+the [implementation report](../docs/rocm1010-cpu-affinity-launcher-20261013.md).

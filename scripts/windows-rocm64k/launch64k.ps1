@@ -16,7 +16,8 @@ param(
     [Parameter(Mandatory)][string]$WindowsSdkRoot,
     [ValidateSet('10.0.26100.0')][string]$WindowsSdkVersion,
     [switch]$PreflightOnly,
-    [ValidateSet('rocm1000','rocm1010')][string]$Runtime = 'rocm1000'
+    [ValidateSet('rocm1000','rocm1010')][string]$Runtime = 'rocm1000',
+    [ValidateSet('windows','one_per_core')][string]$BackendCpuAffinity = 'windows'
 )
 $ErrorActionPreference = 'Stop'
 $stopRequestFile = Join-Path $StateRoot 'stop-request.json'
@@ -58,9 +59,12 @@ $env:FT_BENCH_DISABLE_OVERLAP = '0'
 $env:FT_DIAG_LOGIT_CHECK_EVERY = '64'
 foreach ($name in @('FT_FINITE_DIAGNOSTICS_DIR','FT_DIAG_SCHED_STACK_INTERVAL_S',
     'FT_STEP1_PROFILE_OUTPUT','FT_STEP1_EVENT_OUTPUT','FT_STEP1_STATS_OUTPUT','FT_STEP1_STOP_FILE',
-    'FT_SLOWDOWN_BACKEND_OUTPUT','FT_SLOWDOWN_PROFILE_CONTROL','FT_SLOWDOWN_KNOB_COMPARE')) {
+    'FT_SLOWDOWN_BACKEND_OUTPUT','FT_SLOWDOWN_PROFILE_CONTROL','FT_SLOWDOWN_KNOB_COMPARE',
+    'FT_BACKEND_CPU_AFFINITY','FT_BACKEND_CPU_AFFINITY_OUTPUT')) {
     Remove-Item -LiteralPath ('Env:' + $name) -ErrorAction SilentlyContinue
 }
+$env:FT_BACKEND_CPU_AFFINITY = $BackendCpuAffinity
+$env:FT_BACKEND_CPU_AFFINITY_OUTPUT = Join-Path $RunDir 'backend-affinity.jsonl'
 $SDKDEVEL = $SdkDevel
 $MSVC = $MsvcRoot
 $SDK10 = $WindowsSdkRoot
@@ -130,6 +134,7 @@ foreach ($phase in @('startup','runtime','recovery')) {
 }
 $result = [ordered]@{
     label=$Label; runtime=$Runtime; compiler_workaround=($Runtime -eq 'rocm1010');
+    backend_cpu_affinity=$BackendCpuAffinity; cpu_affinity_probe=(Get-Service64kCpuAffinityProbe $BackendCpuAffinity);
     src=$Src; head=(& git -C $Src rev-parse HEAD); port=$Port; python=$Python;
     model_path=$ModelPath; triton_site=$resolvedTritonSite; triton_version=$tritonProbe[0];
     args=$serveArgs; state_manifest=$StateManifest;
@@ -168,6 +173,7 @@ try {
         python = (Resolve-Path -LiteralPath $Python).Path; port = $Port; profile = $Label;
         src = $Src; head = $result.head; args = $serveArgs; state_manifest = $StateManifest;
         resource_guard = $ResourceGuard; cache_stable_triton_knob = [bool]$CacheStableTritonKnob;
+        backend_cpu_affinity = $BackendCpuAffinity; cpu_affinity_receipt = $null;
         started_at = (Get-Date).ToString('o'); run_dir = $RunDir }
     Write-Service38Json $stateFile $state
     if ($PointerFile) {
@@ -216,6 +222,10 @@ try {
     }
     $result.cold_start_s = [math]::Round(((Get-Date) - $started).TotalSeconds, 1)
     $result.healthy = $healthy; $result.health = $health
+    if ($healthy) {
+        $state.cpu_affinity_receipt = Assert-Service64kBackendCpuAffinity $state $BackendCpuAffinity
+        $result.cpu_affinity_receipt = $state.cpu_affinity_receipt
+    }
 
 function Complete([string]$prompt) {
     $body = @{ model = "qwen3.6-35b-a3b-q4_1"; prompt = $prompt; max_tokens = 64; temperature = 0 } | ConvertTo-Json

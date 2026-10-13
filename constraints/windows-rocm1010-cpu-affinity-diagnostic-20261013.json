@@ -1,0 +1,188 @@
+{
+  "schema": 1,
+  "kind": "cpu-affinity-short-diagnostic",
+  "date": "2026-10-13",
+  "source_head": "3b8bdecbfb107cd0e55f79cc3d57a410c9bcb107",
+  "status": "short-diagnostic-passed",
+  "requests": 84,
+  "context_capacity": 65536,
+  "kv_capacity": 65536,
+  "max_prompt_tokens": 489,
+  "control_prompt_tokens": 24,
+  "control_completion_tokens": 391,
+  "groups": {
+    "old_baseline": {
+      "count": 3,
+      "median_tps": 37.195994277537274,
+      "per_request_tps": [
+        37.875109255101016,
+        37.195994277537274,
+        36.48952095805243
+      ],
+      "median_ttft_s": 0.7660000000032596,
+      "median_host_step_ms": 25.95330000622198,
+      "mean_thread_cpu_step_ms": 25.975063938618923,
+      "median_gpu_stream_ms": 1.4886399507522583,
+      "mean_moe_miss_rate": 0.14985880221653877
+    },
+    "new_baseline": {
+      "count": 3,
+      "median_tps": 36.17475187829544,
+      "per_request_tps": [
+        35.86206896551724,
+        36.92482484376087,
+        36.17475187829544
+      ],
+      "median_ttft_s": 0.7810000000026776,
+      "median_host_step_ms": 27.00100000947714,
+      "mean_thread_cpu_step_ms": 26.854219948849103,
+      "median_gpu_stream_ms": 1.5362800359725952,
+      "mean_moe_miss_rate": 0.14985880221653877
+    },
+    "affinity-1": {
+      "count": 3,
+      "median_tps": 46.740172579113754,
+      "per_request_tps": [
+        47.09576138146044,
+        46.740172579113754,
+        46.740172579113754
+      ],
+      "median_ttft_s": 0.7660000000032596,
+      "median_host_step_ms": 20.509499998297542,
+      "mean_thread_cpu_step_ms": 20.526960784313726,
+      "median_gpu_stream_ms": 1.5793999433517456,
+      "mean_moe_miss_rate": 0.14946717817561808
+    },
+    "restored-1": {
+      "count": 3,
+      "median_tps": 36.48952095810211,
+      "per_request_tps": [
+        36.225153260252824,
+        36.48952095810211,
+        36.86897334086618
+      ],
+      "median_ttft_s": 0.7809999999881256,
+      "median_host_step_ms": 26.842699997359887,
+      "mean_thread_cpu_step_ms": 26.66773231031543,
+      "median_gpu_stream_ms": 1.5306400060653687,
+      "mean_moe_miss_rate": 0.14946717817561808
+    },
+    "affinity-2": {
+      "count": 3,
+      "median_tps": 46.30729042987401,
+      "per_request_tps": [
+        46.30729042987401,
+        45.715625366296756,
+        47.00494154510316
+      ],
+      "median_ttft_s": 0.75,
+      "median_host_step_ms": 20.627300007618032,
+      "mean_thread_cpu_step_ms": 20.6868073316283,
+      "median_gpu_stream_ms": 1.5799599885940552,
+      "mean_moe_miss_rate": 0.14946717817561808
+    },
+    "restored-2": {
+      "count": 3,
+      "median_tps": 36.977339527807004,
+      "per_request_tps": [
+        36.17475187829544,
+        37.19954215949268,
+        36.977339527807004
+      ],
+      "median_ttft_s": 0.7649999999994179,
+      "median_host_step_ms": 26.941899996018037,
+      "mean_thread_cpu_step_ms": 26.374680306905372,
+      "median_gpu_stream_ms": 1.529960036277771,
+      "mean_moe_miss_rate": 0.14946717817561808
+    }
+  },
+  "sdk_baseline_change_percent": -2.745570911808004,
+  "affinity_gain_percent_per_cycle": [
+    28.092042185978848,
+    25.231536452347726
+  ],
+  "old_runtime": {
+    "rocm_sdk": "10.0.0",
+    "torch": "2.13.0+rocm10.0.0",
+    "triton_windows": "3.8.0.post28"
+  },
+  "new_runtime": {
+    "rocm_sdk": "10.1.0",
+    "torch": "2.14.0+rocm10.1.0",
+    "triton_windows": "3.8.0.post29"
+  },
+  "old_evidence": {
+    "requests": 36,
+    "run_dir": "C:\\Users\\Iskandar\\FreeTokenROCm\\.local\\speed1000-short\\runs\\ctx64k-20261013-202935-4959ec5a",
+    "minima_gib": {
+      "free_physical_gib": 24.26,
+      "free_commit_gib": 13.493,
+      "gpu_local_free_gib": 6.607
+    },
+    "recorded_process_identities": 14,
+    "owned_processes_remaining": [],
+    "runtime_hashes_verified": 17,
+    "clean_stop": true,
+    "resources_after_stop": {
+      "at": "2026-10-13T20:34:24.9090575+03:00",
+      "free_physical_gib": 49.453,
+      "free_commit_gib": 47.867,
+      "gpu_local_used_gib": 0.981,
+      "gpu_local_free_gib": 14.828
+    }
+  },
+  "new_evidence": {
+    "requests": 48,
+    "run_dir": "C:\\Users\\Iskandar\\FreeTokenROCm\\.local\\speed1010-shortb\\runs\\ctx64k-20261013-204203-aae8eb7a",
+    "minima_gib": {
+      "free_physical_gib": 24.038,
+      "free_commit_gib": 13.386,
+      "gpu_local_free_gib": 6.591
+    },
+    "recorded_process_identities": 17,
+    "owned_processes_remaining": [],
+    "runtime_hashes_verified": 19,
+    "clean_stop": true,
+    "resources_after_stop": {
+      "at": "2026-10-13T20:49:20.0700792+03:00",
+      "free_physical_gib": 49.685,
+      "free_commit_gib": 47.853,
+      "gpu_local_used_gib": 0.98,
+      "gpu_local_free_gib": 14.829
+    }
+  },
+  "compiler_workaround_sha256": "c30250abfaa0ee14e744e84628458d0f423d82f63759525c5be0591fbd63b19d",
+  "causal_reversal_observed": true,
+  "new_libraries_speedup_demonstrated": false,
+  "historical_soak_cause_fully_proven": false,
+  "affinity_applied_to_ordinary_launcher": false,
+  "long_context_affinity_qualified": false,
+  "mixed_load_affinity_qualified": false,
+  "ready_for_default_adoption": false,
+  "long_probe_stall_resolved": false,
+  "failed_long_probe_fault_preserved": true,
+  "full_series_rerun": false,
+  "raw_verification": {
+    "path": "C:\\Users\\Iskandar\\FreeTokenROCm\\rocm10-20260926\\research-refresh-20261011-audit\\deps-upgrade-20261012\\speed-investigation-20261013\\comparison-verified-final.json",
+    "sha256": "f46e4ce404fff57d37bfb6e8f015d18cfef90b6e95375634cc4462f414e1545e"
+  },
+  "raw_sha256": [
+    {
+      "path": "C:\\Users\\Iskandar\\FreeTokenROCm\\rocm10-20260926\\research-refresh-20261011-audit\\deps-upgrade-20261012\\speed-investigation-20261013\\short-rocm1000\\requests\\measurements.jsonl",
+      "sha256": "b3ef06426b4d7977bdc606326d0782743aa3abd5fee20eb7d94d42527109d5ee"
+    },
+    {
+      "path": "C:\\Users\\Iskandar\\FreeTokenROCm\\.local\\speed1000-short\\runs\\ctx64k-20261013-202935-4959ec5a\\backend-telemetry.jsonl",
+      "sha256": "8984709d830b65b767c43cbe10d9db1246e69f7a2d38b7e0384151a1fe39594d"
+    },
+    {
+      "path": "C:\\Users\\Iskandar\\FreeTokenROCm\\rocm10-20260926\\research-refresh-20261011-audit\\deps-upgrade-20261012\\speed-investigation-20261013\\short-rocm1010b\\requests\\measurements.jsonl",
+      "sha256": "1b580a0772088697cb05dfa713d87a44f6973452e39d9cdf741c31b9e192eb08"
+    },
+    {
+      "path": "C:\\Users\\Iskandar\\FreeTokenROCm\\.local\\speed1010-shortb\\runs\\ctx64k-20261013-204203-aae8eb7a\\backend-telemetry.jsonl",
+      "sha256": "d771ae0a7b090445fac510ad9602c6d5266d3bdcad680617d19fae0d49bce593"
+    }
+  ],
+  "report": "docs/rocm1010-speed-investigation-20261013.md"
+}

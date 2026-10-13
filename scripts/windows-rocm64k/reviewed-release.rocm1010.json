@@ -13,7 +13,7 @@
   "runtime_hashes": [
     {
       "path": "service64k.ps1",
-      "sha256": "97ce777f80afb594534b0c29f8f84456ce279ac684715b95d4f48d378e1f96f8"
+      "sha256": "71d50138c77c45b8c9dfcc51466d2d1d54d04bfd8a3ee85c35551c13f9c381c6"
     },
     {
       "path": "service64k_lifecycle.ps1",
@@ -21,15 +21,15 @@
     },
     {
       "path": "service64k_paths.ps1",
-      "sha256": "57ca72684818613a0ba6783b955313f5870fe8f814f889e32acfdbb66ef6bc4e"
+      "sha256": "73f1732ab9d79e44db159ab956136da6210e659136a25efd0b407b6e73eda6fe"
     },
     {
       "path": "service64k_release.ps1",
-      "sha256": "efcd89e51e1e855f0fcf00f5d3236371138649fe0389d026ff869ad1a95e7057"
+      "sha256": "760e9492d7d15c981917973da76af720511feae3aec9b0a2f6d7665ef9f2bfaa"
     },
     {
       "path": "launch64k.ps1",
-      "sha256": "d643b6735e0fb8e6ad1acde86a865f4ba87d110ebe082def22f0ea324a428f0f"
+      "sha256": "06f1731e26b443656818dfaee39fc5d772beb0de3a2171e340f7446f84f10fba"
     },
     {
       "path": "service38_safety.ps1",
@@ -61,7 +61,11 @@
     },
     {
       "path": "cached_stats_launcher.py",
-      "sha256": "56528fc9439775e7b9bf9d7cfb25a8c041e0043530811e7c51cec5c5418a8a54"
+      "sha256": "ebf1576130a695b1f3d558103fa74c13fb5446d5a3389cd9c94e9e1b5e612be0"
+    },
+    {
+      "path": "backend_cpu_affinity.py",
+      "sha256": "8f5d771495ca51d5ec8549fb2f8781154cd0e3238f6d60994441aa47e3a906fc"
     },
     {
       "path": "reviewed_source.py",
@@ -102,5 +106,14 @@
   ],
   "runtime": "rocm1010",
   "requires_range_safety": true,
-  "qualification_scope": "short64k; long64k not inherited from rocm1000"
+  "qualification_scope": "short64k; long64k not inherited from rocm1000",
+  "previous_launcher_record_sha256": "3f80ea04fb4cb83f05bfd630e6b7087dda4ce10f64532d6f8c498d837bbb55f3",
+  "supported_backend_cpu_affinity": [
+    "windows",
+    "one_per_core"
+  ],
+  "one_per_core_model_smoke_performed": true,
+  "one_per_core_long_prefill_qualified": false,
+  "one_per_core_model_smoke_scope": "frozen repository launcher copy; one readiness plus four 24/391 requests; clean Stop; one-time startup commit floor 40, production floor 45",
+  "one_per_core_model_smoke_manifest": "constraints/windows-rocm1010-cpu-affinity-launcher-20261013.json"
 }

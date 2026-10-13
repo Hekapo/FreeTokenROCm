@@ -1,7 +1,7 @@
 #requires -Version 7.0
 [CmdletBinding()]
 param(
-    [ValidateSet('Configure','Verify','Preflight','Start','Stop','Status','Health')]
+    [ValidateSet('Configure','SetCpuAffinity','Verify','Preflight','Start','Stop','Status','Health')]
     [string]$Action = 'Status',
     [string]$ConfigFile = '',
     [string]$VenvRoot = '',
@@ -9,7 +9,8 @@ param(
     [string]$StateRoot = '',
     [string]$MsvcRoot = '',
     [string]$WindowsSdkRoot = '',
-    [ValidateSet('rocm1000','rocm1010')][string]$Runtime = 'rocm1010'
+    [ValidateSet('rocm1000','rocm1010')][string]$Runtime = 'rocm1010',
+    [ValidateSet('windows','one_per_core')][string]$BackendCpuAffinity = 'windows'
 )
 $ErrorActionPreference = 'Stop'
 if (-not $IsWindows) { throw 'This managed profile requires Windows and PowerShell 7' }
@@ -35,7 +36,8 @@ try {
         $profile = Get-Content -LiteralPath (Join-Path $labRoot 'profile.json') -Raw | ConvertFrom-Json
         $programFilesX86 = [Environment]::GetEnvironmentVariable('ProgramFiles(x86)')
         $candidate = [pscustomobject]@{
-            schema = 2; runtime = $Runtime; venv_root = $VenvRoot; model_path = $ModelPath;
+            schema = 3; runtime = $Runtime; backend_cpu_affinity = $BackendCpuAffinity;
+            venv_root = $VenvRoot; model_path = $ModelPath;
             state_root = $(if ($StateRoot) { $StateRoot } else { Split-Path -Parent $configPath });
             msvc_root = $(if ($MsvcRoot) { $MsvcRoot } else {
                 Join-Path $programFilesX86 ("Microsoft Visual Studio\2022\BuildTools\VC\Tools\MSVC\" + $profile.msvc_version) });
@@ -53,6 +55,12 @@ try {
             state_root = $config.state_root; gpu_instance = $guard.gpu_instance; model_started = $false } |
             ConvertTo-Json -Depth 5
         return
+    }
+    if ($Action -eq 'SetCpuAffinity' -and -not $PSBoundParameters.ContainsKey('BackendCpuAffinity')) {
+        throw 'SetCpuAffinity requires an explicit -BackendCpuAffinity windows or one_per_core'
+    }
+    if ($Action -notin @('Configure','SetCpuAffinity') -and $PSBoundParameters.ContainsKey('BackendCpuAffinity')) {
+        throw 'BackendCpuAffinity is accepted only with Configure or SetCpuAffinity'
     }
     if ($VenvRoot -or $ModelPath -or $StateRoot -or $MsvcRoot -or $WindowsSdkRoot -or $PSBoundParameters.ContainsKey('Runtime')) {
         throw 'Local path parameters are accepted only with -Action Configure'
@@ -77,7 +85,7 @@ try {
     if ($Action -eq 'Stop') {
         Write-Service38Json $stopRequestFile ([ordered]@{ at = (Get-Date).ToString('o'); reason = 'controller stop' })
     }
-    if ($Action -in @('Start','Stop')) {
+    if ($Action -in @('Start','Stop','SetCpuAffinity')) {
         $controlMutex = [Threading.Mutex]::new($false, 'Local\FreeTokenROCm-Service38-1919')
         $waitMs = if ($Action -eq 'Stop') { 300000 } else { 5000 }
         try { $controlMutexOwned = $controlMutex.WaitOne($waitMs) }
@@ -88,12 +96,17 @@ try {
         if (-not $controlMutexOwned) { throw 'Another service control action is in progress' }
     }
     switch ($Action) {
+        'SetCpuAffinity' {
+            Set-Service64kCpuAffinity $BackendCpuAffinity | ConvertTo-Json -Depth 6
+        }
         'Verify' {
             $release = Read-Service38WorkingRelease
             Assert-Service64kLocalPaths $config
             $guard = Get-Service64kGuard
             [ordered]@{ verified = $true; source_root = $source64k; venv_root = $venvRoot;
                 runtime = $runtimeName; compiler_workaround = ($runtimeName -eq 'rocm1010');
+                backend_cpu_affinity = $config.backend_cpu_affinity;
+                cpu_affinity_probe = (Get-Service64kCpuAffinityProbe $config.backend_cpu_affinity);
                 source_files = 476; packages = 74; native_files = 5;
                 gpu_instance = $guard.gpu_instance; resource_guard = $guard;
                 model_started = $false; repository_launcher_model_smoke_performed = ($release.repository_launcher_model_smoke_performed -eq $true) } |
@@ -193,6 +206,7 @@ try {
         } elseif ($owned) { 'RUNNING' } else { 'STOPPED' }
         [ordered]@{ status = $status; root_owned = $owned; observer_owned = $observerOwned;
             runtime = $runtimeName; compiler_workaround = ($runtimeName -eq 'rocm1010');
+            configured_backend_cpu_affinity = $config.backend_cpu_affinity;
             listener_owned = $listenerOwned;
             process_tree_count = $remainingTree.Count;
             listeners = $listeners.Count; recovery_required = $recoveryRequired;

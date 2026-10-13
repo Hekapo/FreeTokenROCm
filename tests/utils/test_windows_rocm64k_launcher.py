@@ -137,9 +137,10 @@ def test_configuration_selects_pinned_runtime(tmp_path, schema, runtime):
     $source64k=$env:FT_TEST_MODULE; $labRoot=$env:FT_TEST_MODULE
     . (Join-Path $env:FT_TEST_MODULE 'service64k_paths.ps1')
     $config=Resolve-Service64kConfig ($env:FT_TEST_PAYLOAD | ConvertFrom-Json)
-    @{runtime=$config.runtime;schema=$config.schema} | ConvertTo-Json
+    @{runtime=$config.runtime;schema=$config.schema;mode=$config.backend_cpu_affinity} | ConvertTo-Json
     ''', payload)
-    assert result['runtime'] == (runtime or 'rocm1000') and result['schema'] == 2
+    assert result['runtime'] == (runtime or 'rocm1000') and result['schema'] == 3
+    assert result['mode'] == 'windows'
 
 
 @WINDOWS
@@ -317,3 +318,228 @@ def test_failed_start_before_spawn_removes_pointer_without_creating_fault(tmp_pa
     @{pointer=(Test-Path -LiteralPath $pointerFile);fault=(Test-Path -LiteralPath $faultFile)} | ConvertTo-Json
     """, {"directory": str(tmp_path), "launcher": str(fixture)})
     assert result == {"pointer": False, "fault": False}
+
+
+@pytest.fixture
+def affinity_module():
+    spec = importlib.util.spec_from_file_location('backend_cpu_affinity', MODULE / 'backend_cpu_affinity.py')
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+@pytest.mark.parametrize('cores,allowed,selected', [
+    ([3, 12, 48, 192, 768, 3072, 12288, 49152], 65535, 21845),
+    ([3, 12], 10, 10),
+    ([3, 12], 3, 1),
+    ([1, 2, 4, 8], 15, 15),
+])
+def test_cpu_affinity_honors_topology_and_inherited_mask(affinity_module, cores, allowed, selected):
+    assert affinity_module.select_one_per_core(cores, allowed) == selected
+
+
+@pytest.mark.parametrize('cores,allowed', [([], 15), ([3, 3], 3), ([3, 6], 7),
+                                          ([0, 12], 15), ([3, 12], 0), ([3, 12], 16),
+                                          ([True, 12], 15), ([3, 12], True)])
+def test_cpu_affinity_rejects_invalid_topology(affinity_module, cores, allowed):
+    with pytest.raises(ValueError):
+        affinity_module.select_one_per_core(cores, allowed)
+
+
+class FakeCpuAffinity:
+    def __init__(self, reject=False, groups=1):
+        self.mask = 15
+        self.calls = []
+        self.reject = reject
+        self.groups = groups
+
+    def masks(self):
+        return self.mask, 15
+
+    def topology(self):
+        return {'group_count': self.groups, 'core_masks': [3, 12]}
+
+    def created(self):
+        return 42
+
+    def set_mask(self, mask):
+        self.calls.append(mask)
+        if self.reject and mask == 5:
+            raise OSError('affinity denied')
+        self.mask = mask
+
+
+@pytest.mark.parametrize('mode,expected,calls', [('windows', 15, []), ('one_per_core', 5, [5, 15])])
+def test_cpu_affinity_changes_only_worker_scope_and_restores(affinity_module, tmp_path, mode, expected, calls):
+    native = FakeCpuAffinity()
+    output = tmp_path / 'backend-affinity.jsonl'
+    seen = []
+
+    def worker(args, ack):
+        seen.append(native.mask)
+        return 'worker-result'
+
+    result = affinity_module.run_with_affinity(worker, 'args', 'ack', mode, output,
+                                               native=native, gpu_initialized=lambda: False)
+    assert result == 'worker-result' and seen == [expected]
+    assert native.mask == 15 and native.calls == calls
+    receipts = [json.loads(line) for line in output.read_text().splitlines()]
+    assert receipts[0]['role'] == 'backend' and receipts[0]['applied_mask'] == expected
+    assert receipts[0]['creation_filetime'] == 42 and receipts[0]['before_gpu_initialization']
+
+
+@pytest.mark.parametrize('failure', ['native-denied', 'groups', 'late-gpu', 'receipt'])
+def test_cpu_affinity_failure_prevents_worker_start(affinity_module, tmp_path, failure):
+    native = FakeCpuAffinity(reject=failure == 'native-denied', groups=2 if failure == 'groups' else 1)
+    output = tmp_path / ('missing/out.jsonl' if failure == 'receipt' else 'out.jsonl')
+    worker = mock.Mock()
+    with pytest.raises((OSError, RuntimeError)):
+        affinity_module.run_with_affinity(worker, None, None, 'one_per_core', output,
+                                         native=native, gpu_initialized=lambda: failure == 'late-gpu')
+    worker.assert_not_called()
+    assert native.mask == 15
+
+
+def test_cpu_affinity_restores_on_worker_exception(affinity_module, tmp_path):
+    native = FakeCpuAffinity()
+    worker = mock.Mock(side_effect=RuntimeError('worker failed'))
+    with pytest.raises(RuntimeError, match='worker failed'):
+        affinity_module.run_with_affinity(worker, None, None, 'one_per_core', tmp_path / 'out.jsonl',
+                                         native=native, gpu_initialized=lambda: False)
+    assert native.mask == 15 and native.calls == [5, 15]
+
+
+@WINDOWS
+@pytest.mark.parametrize('mode,allowed', [('windows', True), ('one_per_core', True),
+                                       ('ONE_PER_CORE', False), ('', False), (None, False), (True, False),
+                                       ([], False), (['windows'], False)])
+def test_cpu_affinity_configuration_validates_explicit_mode(tmp_path, mode, allowed):
+    payload = {'schema': 3, 'runtime': 'rocm1010', 'backend_cpu_affinity': mode,
+               'venv_root': str(tmp_path / 'venv'), 'model_path': str(tmp_path / 'model.gguf'),
+               'state_root': str(tmp_path / 'state'), 'msvc_root': str(tmp_path / 'msvc'),
+               'windows_sdk_root': str(tmp_path / 'sdk')}
+    result = run_ps(r'''
+    $source64k=$env:FT_TEST_MODULE; $labRoot=$env:FT_TEST_MODULE
+    . (Join-Path $env:FT_TEST_MODULE 'service64k_paths.ps1')
+    try {$c=Resolve-Service64kConfig ($env:FT_TEST_PAYLOAD | ConvertFrom-Json); @{allowed=$true;mode=$c.backend_cpu_affinity} | ConvertTo-Json}
+    catch {@{allowed=$false} | ConvertTo-Json}
+    ''', payload)
+    assert result['allowed'] is allowed
+    if allowed:
+        assert result['mode'] == mode
+
+
+def test_cpu_affinity_hook_is_importable_and_does_not_run_in_frontend(affinity_module, monkeypatch, tmp_path):
+    import pickle
+
+    def _run_scheduler(args, ack_queue):
+        return 'scheduler'
+
+    _run_scheduler.__module__ = 'freetoken.server.launch'
+    token_worker = object()
+    launch = SimpleNamespace(_run_scheduler=_run_scheduler, _run_tokenize_worker=token_worker,
+                             _report_startup_error=mock.Mock())
+    apply = mock.Mock()
+    monkeypatch.setattr(affinity_module, 'run_with_affinity', apply)
+    monkeypatch.setitem(sys.modules, 'backend_cpu_affinity', affinity_module)
+    affinity_module.install_scheduler_hook(launch, 'one_per_core', tmp_path / 'out.jsonl', lambda: False)
+    assert pickle.loads(pickle.dumps(launch._run_scheduler)) is affinity_module.scheduler_worker
+    assert launch._run_tokenize_worker is token_worker
+    apply.assert_not_called()
+    args = SimpleNamespace(tp_info=SimpleNamespace(size=1, rank=0))
+    monkeypatch.setattr(affinity_module.mp, 'current_process', lambda: SimpleNamespace(name='freetoken-detokenizer-0'))
+    with pytest.raises(RuntimeError, match='scheduler worker'):
+        launch._run_scheduler(args, None)
+    apply.assert_not_called()
+
+
+@WINDOWS
+@pytest.mark.parametrize('case', ['stopped', 'active', 'fault', 'probe-failed'])
+def test_cpu_affinity_setter_is_atomic_and_requires_stopped_service(tmp_path, case):
+    path = tmp_path / 'config.json'
+    path.write_text(json.dumps({'schema': 3, 'backend_cpu_affinity': 'windows'}))
+    result = run_ps(r'''
+    . (Join-Path $env:FT_TEST_MODULE 'service38_safety.ps1')
+    . (Join-Path $env:FT_TEST_MODULE 'service64k_paths.ps1')
+    $p=$env:FT_TEST_PAYLOAD | ConvertFrom-Json
+    $configPath=$p.path; $config=Get-Content -LiteralPath $configPath -Raw | ConvertFrom-Json
+    function Assert-ProfileStartAllowed {if ($p.case -in @('active','fault')) {throw 'active or recovery-required'}}
+    function Read-Service38WorkingRelease {@{valid=$true}}
+    function Get-Service64kCpuAffinityProbe {if ($p.case -eq 'probe-failed') {throw 'probe failed'}; @{valid=$true}}
+    try {$null=Set-Service64kCpuAffinity 'one_per_core'; $allowed=$true} catch {$allowed=$false}
+    @{allowed=$allowed;mode=(Get-Content -LiteralPath $configPath -Raw | ConvertFrom-Json).backend_cpu_affinity} | ConvertTo-Json
+    ''', {'path': str(path), 'case': case})
+    assert result == {'allowed': case == 'stopped', 'mode': 'one_per_core' if case == 'stopped' else 'windows'}
+
+
+@WINDOWS
+def test_cpu_affinity_windows_spawn_is_backend_only(tmp_path):
+    fixture = tmp_path / 'spawn_affinity.py'
+    output = tmp_path / 'affinity.jsonl'
+    fixture.write_text(r'''
+import json, multiprocessing as mp, pathlib, sys, types
+sys.path.insert(0, sys.argv[1])
+import backend_cpu_affinity as affinity
+launch=types.ModuleType('freetoken.server.launch')
+exec("""def _run_scheduler(args, ack_queue):
+    ack_queue.put(("backend", __import__("backend_cpu_affinity").WindowsCpuAffinity().masks()[0], __import__("os").getpid()))
+""", launch.__dict__)
+launch._report_startup_error=lambda q,e:q.put(('error',str(e)))
+affinity.install_scheduler_hook(launch, 'one_per_core', pathlib.Path(sys.argv[2]), lambda:False)
+def tokenizer(q):
+    q.put(('tokenizer',affinity.WindowsCpuAffinity().masks()[0]))
+if __name__=='__main__':
+    before=affinity.WindowsCpuAffinity().masks()[0]
+    expected=affinity.probe_policy('one_per_core')['applied_mask']
+    ctx=mp.get_context('spawn'); q=ctx.Queue()
+    args=types.SimpleNamespace(tp_info=types.SimpleNamespace(size=1,rank=0))
+    backend=ctx.Process(target=launch._run_scheduler,args=(args,q),name='freetoken-TP0-scheduler')
+    token=ctx.Process(target=tokenizer,args=(q,),name='freetoken-detokenizer-0')
+    try:
+        backend.start(); token.start()
+        received=[q.get(timeout=10),q.get(timeout=10)]
+        backend.join(10); token.join(10)
+        assert backend.exitcode==0 and token.exitcode==0
+        after=affinity.WindowsCpuAffinity().masks()[0]
+        print(json.dumps({'before':before,'after':after,'expected':expected,'received':received,'gpu_loaded':'torch' in sys.modules}))
+    finally:
+        for p in (backend,token):
+            if p.pid and p.is_alive():p.terminate();p.join(5)
+        q.close();q.join_thread()
+''', encoding='utf-8')
+    result = subprocess.run([sys.executable, '-B', str(fixture), str(MODULE), str(output)],
+                            capture_output=True, text=True, encoding='utf-8', timeout=35,
+                            creationflags=subprocess.CREATE_NO_WINDOW)
+    assert result.returncode == 0, result.stderr
+    record = json.loads(result.stdout)
+    messages = {row[0]: row for row in record['received']}
+    assert record['before'] == record['after'] == messages['tokenizer'][1]
+    assert messages['backend'][1] == record['expected'] and not record['gpu_loaded']
+    receipts = [json.loads(line) for line in output.read_text().splitlines()]
+    assert [row['event'] for row in receipts] == ['applied', 'restored']
+    assert {row['pid'] for row in receipts} == {messages['backend'][2]}
+
+
+@WINDOWS
+@pytest.mark.parametrize('case', ['pass', 'foreign-pid', 'reused-pid', 'wrong-mask', 'late-gpu', 'overlap'])
+def test_cpu_affinity_receipt_requires_live_owned_worker(tmp_path, case):
+    result = run_ps(r'''
+    . (Join-Path $env:FT_TEST_MODULE 'service64k_paths.ps1')
+    $p=$env:FT_TEST_PAYLOAD | ConvertFrom-Json
+    $started=[datetime]'2026-01-01T00:00:00Z'
+    $r=[ordered]@{event='applied';role='backend';mode='one_per_core';process_name='freetoken-TP0-scheduler';
+        before_gpu_initialization=$true;pid=20;creation_filetime=$started.ToFileTimeUtc();
+        original_mask=15;applied_mask=5;group_count=1;core_masks=@(3,12)}
+    if ($p.case -eq 'foreign-pid') {$r.pid=30}
+    if ($p.case -eq 'reused-pid') {$r.creation_filetime-=1}
+    if ($p.case -eq 'wrong-mask') {$r.applied_mask=10}
+    if ($p.case -eq 'late-gpu') {$r.before_gpu_initialization=$false}
+    if ($p.case -eq 'overlap') {$r.core_masks=@(3,3,12)}
+    $r|ConvertTo-Json -Depth 4 -Compress|Set-Content -LiteralPath (Join-Path $p.directory 'backend-affinity.jsonl')
+    function Get-Service38Tree {param($State);[pscustomobject]@{ProcessId=10};[pscustomobject]@{ProcessId=20}}
+    function Get-Process {param($Id,$ErrorAction);[pscustomobject]@{StartTime=$started;ProcessorAffinity=[IntPtr]::new(5)}}
+    try {$null=Assert-Service64kBackendCpuAffinity ([pscustomobject]@{pid=10;run_dir=$p.directory}) 'one_per_core';$allowed=$true}
+    catch {$allowed=$false;$reason=$_.Exception.Message}
+    @{allowed=$allowed;reason=$reason}|ConvertTo-Json
+    ''', {'case': case, 'directory': str(tmp_path)})
+    assert result['allowed'] is (case == 'pass'), result.get('reason')

@@ -1,5 +1,5 @@
 function Get-Service64kRuntimeNames([string]$Runtime = 'rocm1000') {
-    $names = @('service64k.ps1','service64k_lifecycle.ps1','service64k_paths.ps1','service64k_release.ps1','launch64k.ps1','service38_safety.ps1','service38_probes.ps1','service38_probe_native.cs','service38_gpu_identity.cs','query_service38.ps1','observe_service38.ps1','stable_triton_knob.py','cached_stats_launcher.py','reviewed_source.py','profile.json','quarantine-history.json')
+    $names = @('service64k.ps1','service64k_lifecycle.ps1','service64k_paths.ps1','service64k_release.ps1','launch64k.ps1','service38_safety.ps1','service38_probes.ps1','service38_probe_native.cs','service38_gpu_identity.cs','query_service38.ps1','observe_service38.ps1','stable_triton_knob.py','cached_stats_launcher.py','backend_cpu_affinity.py','reviewed_source.py','profile.json','quarantine-history.json')
     if ($Runtime -eq 'rocm1010') {
         return $names + @('accepted-source.rocm1010.json','rocm1010/compiler_safety.py','rocm1010/sitecustomize.py')
     }
@@ -21,6 +21,11 @@ function Read-Service38WorkingRelease {
         $release.max_running_requests -ne 1 -or $release.cache_stable_triton_knob -ne $true -or
         $release.user_policy -ne $policy) {
         throw 'Unexpected repository 64K release record'
+    }
+    if (@($release.supported_backend_cpu_affinity).Count -ne 2 -or
+        $release.supported_backend_cpu_affinity[0] -cne 'windows' -or
+        $release.supported_backend_cpu_affinity[1] -cne 'one_per_core') {
+        throw 'Unreviewed backend CPU affinity modes'
     }
     $required = @(Get-Service64kRuntimeNames $runtime)
     $seen = @()

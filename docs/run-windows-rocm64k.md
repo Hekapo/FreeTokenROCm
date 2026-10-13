@@ -7,7 +7,7 @@ profile on `http://127.0.0.1:1919` with context and KV capacity 65536.
 ## Requirements and local configuration
 
 Use Windows, PowerShell 7, CPython3.12.0 and the RX9070XT / gfx1201.
-Configuration schema2 records the chosen native runtime:
+Configuration schema3 records the native runtime and backend CPU affinity:
 
 | Runtime | AMD Torch | SDK | Triton Windows |
 |---|---|---|---|
@@ -15,8 +15,9 @@ Configuration schema2 records the chosen native runtime:
 | `rocm1000` (rollback) | 2.13.0+rocm10.0.0 | 10.0.0 | 3.8.0.post28 |
 
 Both retain the recorded74 packages. Legacy schema1 configurations select
-`rocm1000`; reading them does not rewrite the file. `-Runtime` is accepted only
-by `Configure`, and later commands use the persisted choice.
+`rocm1000`. Schema1/2 configurations retain Windows CPU placement; reading them
+does not rewrite the file. `-Runtime` is accepted only by `Configure`, and later
+commands use the persisted choice.
 The [10.1 constraints](../constraints/windows-rocm1010-candidate-20261012.txt)
 and [upgrade report](rocm1010-upgrade-20261012.md) record its exact environment.
 The [10.0 constraints](../constraints/windows-rocm1000-pydeps-20261012.txt)
@@ -94,6 +95,51 @@ overlap, one backend/frontend request, default output budget 2048, and logits
 checks every 64 tokens. CUDA graphs, diagnostic tracing, source knob opt-in,
 and routed prefill opt-in remain disabled. The verified process-start Triton
 buffer-ops cache is retained, with Torch loaded before Triton.
+
+## Backend CPU placement
+
+`backend_cpu_affinity` accepts `windows` or `one_per_core`. New configurations
+default to `windows`; `Configure -BackendCpuAffinity one_per_core` selects the
+other mode. With an existing configuration, Stop the service, then select:
+
+```powershell
+pwsh -NoProfile -File .\scripts\windows-rocm64k\service64k.ps1 -Action SetCpuAffinity `
+  -BackendCpuAffinity one_per_core
+```
+
+`SetCpuAffinity` checks the reviewed launcher and CPU topology without loading
+the model, then writes the local schema3 configuration atomically. The shared
+mutex and stopped-service checks reject changes while the service is active,
+while recovery is required, or while port1919 is occupied. `-ConfigFile` selects
+a different saved configuration. `Verify` reports the selected mode and mask;
+`Status` reports the configured mode and the actual worker receipt.
+
+`one_per_core` chooses one available logical processor in each physical core,
+within the affinity inherited from Windows. It changes only the single-rank
+scheduler/backend process before GPU initialization. The launcher, frontend,
+and tokenizer retain their inherited placement. The mask is derived from the
+current topology; on this Ryzen7 9700X it is `0x5555`, eight processors across
+eight cores. This mode requires 64-bit Windows with one processor group.
+Unsupported topology, a failed native call, or a mismatched worker receipt
+prevents startup. The controller verifies the worker's PID, creation time, and
+live affinity before accepting readiness.
+
+To return to Windows placement after Stop:
+
+```powershell
+pwsh -NoProfile -File .\scripts\windows-rocm64k\service64k.ps1 -Action SetCpuAffinity `
+  -BackendCpuAffinity windows
+```
+
+The [CPU placement investigation](rocm1010-speed-investigation-20261013.md)
+records the reversible short-request speed effect. Its long-prefill stall
+remains a separate unresolved result; short-request evidence does not qualify
+long-prefill behavior with this mode.
+
+The [repository implementation check](rocm1010-cpu-affinity-launcher-20261013.md)
+passed96 CPU checks, readiness, four exact short responses and Stop with
+ROCm10.1. This workspace's default and ROCm10.1 alias configurations now select
+`one_per_core`; the ROCm10.0 rollback configuration retains `windows`.
 
 ## Resource guard and recovery
 
