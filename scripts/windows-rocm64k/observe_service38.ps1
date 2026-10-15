@@ -22,6 +22,7 @@ $resourceProbe = $null
 $tree = @()
 $treeSampled = $false
 $resources = $null
+$progressWatch = [pscustomobject]@{sequence=$null;clock=[Diagnostics.Stopwatch]::StartNew()}
 function Record-ProcessMemory($Tree) {
     $ownedIds = @($Tree | ForEach-Object { [int]$_.ProcessId })
     $processes = @(Get-Process -ErrorAction SilentlyContinue)
@@ -109,6 +110,20 @@ while ($true) {
             }
             break
         }
+        if ($state.progress_diagnostics -eq $true -and -not (Test-Path -LiteralPath (
+            Join-Path (Split-Path -Parent $StateFile) 'stop-intent.json'))) {
+            if (-not $state.cpu_affinity_receipt) {
+                $acceptedState = Read-Service64kProgressFile $StateFile
+                if ($acceptedState.pid -ne $state.pid -or
+                    $acceptedState.root_start_filetime -ne $state.root_start_filetime -or
+                    $acceptedState.run_dir -cne $state.run_dir) { throw 'Diagnostic state changed its root identity' }
+                if ($acceptedState.cpu_affinity_receipt) { $state.cpu_affinity_receipt = $acceptedState.cpu_affinity_receipt }
+            }
+            $progress = Read-Service64kBackendProgress $state
+            if (Test-Service64kProgressStall $progress $progressWatch) {
+                throw "Backend made no stage progress for 45s: $($progress.phase)"
+            }
+        }
         if ($treeProbe) {
             $sample = Receive-Service38Probe $treeProbe
             if (-not $sample.pending) {
@@ -146,6 +161,12 @@ while ($true) {
         # Close probes first; do not consult the failed provider for diagnostics.
         Close-Service38Probe $treeProbe
         Close-Service38Probe $resourceProbe
+        # Critical resource/provider cleanup never waits for a Python-thread reply.
+        $capture = Save-Service64kProgressCapture $state 'observer fault cleanup' -WaitMilliseconds 0
+        if ($capture.enabled) {
+            [ordered]@{kind='progress_capture';at=(Get-Date).ToString('o');capture=$capture} |
+                ConvertTo-Json -Compress -Depth 8 | Add-Content -LiteralPath $EventsFile
+        }
         try { Record-ProcessMemory $tree } catch {
             [ordered]@{ kind = 'memory_sample_error'; message = $_.Exception.Message } |
                 ConvertTo-Json -Compress | Add-Content -LiteralPath $EventsFile

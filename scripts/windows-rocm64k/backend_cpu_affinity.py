@@ -169,10 +169,16 @@ def scheduler_worker(args, ack_queue):
         raise RuntimeError('CPU affinity requires the managed single-rank scheduler worker')
     started = False
 
-    def start_worker(worker_args, worker_ack):
+    def start_original(worker_args, worker_ack):
         nonlocal started
         started = True
         return _original_scheduler(worker_args, worker_ack)
+
+    def start_worker(worker_args, worker_ack):
+        if os.environ.get('FT_BACKEND_PROGRESS_DIR'):
+            from backend_progress import run_backend
+            return run_backend(start_original, worker_args, worker_ack)
+        return start_original(worker_args, worker_ack)
 
     try:
         return run_with_affinity(start_worker, args, ack_queue, _mode, _output,

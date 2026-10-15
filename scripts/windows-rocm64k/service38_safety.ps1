@@ -1,5 +1,6 @@
 # Shared by the launcher, controller and external observer. No GPU runtime is imported here.
 . (Join-Path $PSScriptRoot 'service38_probes.ps1')
+. (Join-Path $PSScriptRoot 'service64k_progress.ps1')
 function Write-Service38Json([string]$Path, $Value) {
     $directory = Split-Path -Parent $Path
     $temporary = Join-Path $directory ('.' + (Split-Path -Leaf $Path) + '.' + [guid]::NewGuid().ToString('N') + '.tmp')

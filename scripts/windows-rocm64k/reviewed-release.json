@@ -13,27 +13,27 @@
   "runtime_hashes": [
     {
       "path": "service64k.ps1",
-      "sha256": "71d50138c77c45b8c9dfcc51466d2d1d54d04bfd8a3ee85c35551c13f9c381c6"
+      "sha256": "4aecc7f9b77c1272c5b7e8bbde44f7ed296c3893f72509357d9f82cee98b8faa"
     },
     {
       "path": "service64k_lifecycle.ps1",
-      "sha256": "0800385740342e5a858d5f7f3b490436ba51f9db913d6d7240d3842013d16986"
+      "sha256": "0ce72ef0248a9e683f3b52915562779029c894d37dc0c4bd50709f17f22c3da3"
     },
     {
       "path": "service64k_paths.ps1",
-      "sha256": "73f1732ab9d79e44db159ab956136da6210e659136a25efd0b407b6e73eda6fe"
+      "sha256": "26baec96b7a76e8534989b02951169510cc3add8cd1e9ae84ad7079c8f6a2449"
     },
     {
       "path": "service64k_release.ps1",
-      "sha256": "760e9492d7d15c981917973da76af720511feae3aec9b0a2f6d7665ef9f2bfaa"
+      "sha256": "26d62d4f4d097cf9c96ec0bfa33f887307e581ceb3df9ece11e12e9a7d5afef7"
     },
     {
       "path": "launch64k.ps1",
-      "sha256": "06f1731e26b443656818dfaee39fc5d772beb0de3a2171e340f7446f84f10fba"
+      "sha256": "d2a51f706604d3d570f7a8eb8132d3a62d998c41b6c55221a814aaf0b54bc24d"
     },
     {
       "path": "service38_safety.ps1",
-      "sha256": "e2b5620ea8b206f5e3b70a6690acea9c2816e2f268f0256f0d1d3dab86ee42c1"
+      "sha256": "04de1a917e42337ac588f2f6c6db6b467a0bf20b34ebfc7ca37ba953e5c821b4"
     },
     {
       "path": "service38_probes.ps1",
@@ -53,7 +53,7 @@
     },
     {
       "path": "observe_service38.ps1",
-      "sha256": "ec01b870396e2517175e11faf9191807e24207fe33abf09d47b18960911d58c7"
+      "sha256": "680a08f94f126275a4d6d04406582c71c5d287bba05df733fabbb1bceb923a56"
     },
     {
       "path": "stable_triton_knob.py",
@@ -65,7 +65,7 @@
     },
     {
       "path": "backend_cpu_affinity.py",
-      "sha256": "8f5d771495ca51d5ec8549fb2f8781154cd0e3238f6d60994441aa47e3a906fc"
+      "sha256": "a90f30c4b4595f9043a8f5ae3340e13c85131d89164667e07d60e52280a4df78"
     },
     {
       "path": "reviewed_source.py",
@@ -82,6 +82,14 @@
     {
       "path": "quarantine-history.json",
       "sha256": "24a46ae2dbb09754dc3be67f84eff311b71984a88c3db445a12d6270bb2be3eb"
+    },
+    {
+      "path": "backend_progress.py",
+      "sha256": "e39ea440e872ce1a14d35b0b44b95598e85ec2569ea2f89c834663f72e70da66"
+    },
+    {
+      "path": "service64k_progress.ps1",
+      "sha256": "15423a5470998dcab2786cb02af3b2421a207ce6f5f263694f7c2cce189bbf08"
     }
   ],
   "evidence_hashes": [
@@ -116,11 +124,17 @@
       "sha256": "12ff9008e99ca2220947f1ed144883368d590062d6006fc3540808f2184e7063"
     }
   ],
-  "previous_launcher_record_sha256": "8b0996e557e77218f3d1e3d1a0c3bac0247aa316a58a9bf4492e822c133106d3",
+  "previous_launcher_record_sha256": "e74d01b5206a83ca03ec8e1fc61358d001d287e86bcd520dea65d58625b839f6",
   "supported_backend_cpu_affinity": [
     "windows",
     "one_per_core"
   ],
   "one_per_core_model_smoke_performed": false,
-  "one_per_core_long_prefill_qualified": false
+  "one_per_core_long_prefill_qualified": false,
+  "progress_diagnostics_model_qualified": false,
+  "progress_diagnostics_scope": "opt-in; offline CPU/Windows capture checks; no new model or GPU run",
+  "inherited_cpu_affinity_smoke": {
+    "performed": false,
+    "scope": "historical CPU-affinity launcher; this diagnostic bootstrap has no new model qualification"
+  }
 }

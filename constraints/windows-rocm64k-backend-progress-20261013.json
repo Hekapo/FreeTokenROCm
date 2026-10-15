@@ -1,0 +1,261 @@
+{
+  "schema": 1,
+  "kind": "backend-progress-offline-implementation",
+  "recorded_at_utc": "2026-10-13T20:23:29.324972+00:00",
+  "source_base_commit": "dac3d655f868f54f932584ffb351b8899f5f1a35",
+  "branch": "integration/backend-progress-diagnostics",
+  "status": "offline-checks-passed-model-check-pending",
+  "model_started": false,
+  "gpu_compute_run": false,
+  "full_model_series_run": false,
+  "long_stall_cause_established": false,
+  "long_stall_fixed": false,
+  "diagnostics_default": false,
+  "opt_in": "Start -ProgressDiagnostics",
+  "cpu_tests": {
+    "passed": 118,
+    "new_cases": 22,
+    "time_s": 21.239,
+    "before": {
+      "errors": 8,
+      "failures": 5
+    }
+  },
+  "checked_behaviors": [
+    "idle vs busy stages",
+    "bounded history and original error",
+    "hooks match source AST and restore inheritance",
+    "PID/time/request-id binding",
+    "WMI-independent bounded capture",
+    "native Windows C watchdog while GIL held",
+    "real CPU worker capture acknowledged before owned exit",
+    "monotonic stage stall detection",
+    "GPU assignment published before scheduler import/hooks"
+  ],
+  "limits": {
+    "stack_delay_s": 10,
+    "active_stage_stall_s": 45,
+    "capture_reply_wait_max_ms": 1500,
+    "observer_reply_wait_ms": 0,
+    "history_events": 32,
+    "json_max_bytes": 65536,
+    "stack_snapshot_max_bytes": 1048576
+  },
+  "resource_guard": {
+    "gpu_instance": "luid_0x00000000_0x00012CAF_phys_0",
+    "gpu_total_gib": 15.809112548828125,
+    "startup": {
+      "free_physical_gib": 38,
+      "free_commit_gib": 45,
+      "gpu_local_free_gib": 14
+    },
+    "runtime": {
+      "free_physical_gib": 12,
+      "free_commit_gib": 4,
+      "gpu_local_free_gib": 3
+    },
+    "recovery": {
+      "free_physical_gib": 38,
+      "free_commit_gib": 28,
+      "gpu_local_free_gib": 14
+    }
+  },
+  "source_files": 476,
+  "packages": 74,
+  "native_files": 5,
+  "compiler_safety_sha256": "c30250abfaa0ee14e744e84628458d0f423d82f63759525c5be0591fbd63b19d",
+  "normal_config_affinity": "one_per_core",
+  "controller_status": {
+    "status": "STOPPED",
+    "listeners": 0,
+    "recovery_required": false
+  },
+  "runtime_hashes": {
+    "reviewed-release.json": [
+      {
+        "path": "service64k.ps1",
+        "sha256": "4aecc7f9b77c1272c5b7e8bbde44f7ed296c3893f72509357d9f82cee98b8faa"
+      },
+      {
+        "path": "service64k_lifecycle.ps1",
+        "sha256": "0ce72ef0248a9e683f3b52915562779029c894d37dc0c4bd50709f17f22c3da3"
+      },
+      {
+        "path": "service64k_paths.ps1",
+        "sha256": "26baec96b7a76e8534989b02951169510cc3add8cd1e9ae84ad7079c8f6a2449"
+      },
+      {
+        "path": "service64k_release.ps1",
+        "sha256": "26d62d4f4d097cf9c96ec0bfa33f887307e581ceb3df9ece11e12e9a7d5afef7"
+      },
+      {
+        "path": "launch64k.ps1",
+        "sha256": "d2a51f706604d3d570f7a8eb8132d3a62d998c41b6c55221a814aaf0b54bc24d"
+      },
+      {
+        "path": "service38_safety.ps1",
+        "sha256": "04de1a917e42337ac588f2f6c6db6b467a0bf20b34ebfc7ca37ba953e5c821b4"
+      },
+      {
+        "path": "service38_probes.ps1",
+        "sha256": "51d42a24f32a8751438ec077249c33817cdc32cdbf4e4a9900c8b2d4d3f54adf"
+      },
+      {
+        "path": "service38_probe_native.cs",
+        "sha256": "f05c52644b6b363c994f16571fed874e1d0a73e19d224a28c7f2441db88a9111"
+      },
+      {
+        "path": "service38_gpu_identity.cs",
+        "sha256": "a4ba83ea54be1140628b7f96fe6d0c0009a08d4bf17f5b6aa8534ab371c1eedf"
+      },
+      {
+        "path": "query_service38.ps1",
+        "sha256": "eb7f75d4b9eb52be454a7f93437d019bd68892e9e809c852ab05d29eacc7827e"
+      },
+      {
+        "path": "observe_service38.ps1",
+        "sha256": "680a08f94f126275a4d6d04406582c71c5d287bba05df733fabbb1bceb923a56"
+      },
+      {
+        "path": "stable_triton_knob.py",
+        "sha256": "58cc3684ea1238aca956dc8abf933b1afe0b95c2aab05afed9667c71ac2a4b8e"
+      },
+      {
+        "path": "cached_stats_launcher.py",
+        "sha256": "ebf1576130a695b1f3d558103fa74c13fb5446d5a3389cd9c94e9e1b5e612be0"
+      },
+      {
+        "path": "backend_cpu_affinity.py",
+        "sha256": "a90f30c4b4595f9043a8f5ae3340e13c85131d89164667e07d60e52280a4df78"
+      },
+      {
+        "path": "reviewed_source.py",
+        "sha256": "eff1aa46f5e6afc271bd5615742455537850eb679cc0f3465d40e8b9ce5f08f3"
+      },
+      {
+        "path": "accepted-source.json",
+        "sha256": "632dc5978946054d67dca5e40249234ccb443ca7cf40e99617704652d461f352"
+      },
+      {
+        "path": "profile.json",
+        "sha256": "806e8d0718cb8e1a405dd1af8fb9b73c66814dd59680d737c403f1ac95d1ac84"
+      },
+      {
+        "path": "quarantine-history.json",
+        "sha256": "24a46ae2dbb09754dc3be67f84eff311b71984a88c3db445a12d6270bb2be3eb"
+      },
+      {
+        "path": "backend_progress.py",
+        "sha256": "e39ea440e872ce1a14d35b0b44b95598e85ec2569ea2f89c834663f72e70da66"
+      },
+      {
+        "path": "service64k_progress.ps1",
+        "sha256": "15423a5470998dcab2786cb02af3b2421a207ce6f5f263694f7c2cce189bbf08"
+      }
+    ],
+    "reviewed-release.rocm1010.json": [
+      {
+        "path": "service64k.ps1",
+        "sha256": "4aecc7f9b77c1272c5b7e8bbde44f7ed296c3893f72509357d9f82cee98b8faa"
+      },
+      {
+        "path": "service64k_lifecycle.ps1",
+        "sha256": "0ce72ef0248a9e683f3b52915562779029c894d37dc0c4bd50709f17f22c3da3"
+      },
+      {
+        "path": "service64k_paths.ps1",
+        "sha256": "26baec96b7a76e8534989b02951169510cc3add8cd1e9ae84ad7079c8f6a2449"
+      },
+      {
+        "path": "service64k_release.ps1",
+        "sha256": "26d62d4f4d097cf9c96ec0bfa33f887307e581ceb3df9ece11e12e9a7d5afef7"
+      },
+      {
+        "path": "launch64k.ps1",
+        "sha256": "d2a51f706604d3d570f7a8eb8132d3a62d998c41b6c55221a814aaf0b54bc24d"
+      },
+      {
+        "path": "service38_safety.ps1",
+        "sha256": "04de1a917e42337ac588f2f6c6db6b467a0bf20b34ebfc7ca37ba953e5c821b4"
+      },
+      {
+        "path": "service38_probes.ps1",
+        "sha256": "51d42a24f32a8751438ec077249c33817cdc32cdbf4e4a9900c8b2d4d3f54adf"
+      },
+      {
+        "path": "service38_probe_native.cs",
+        "sha256": "f05c52644b6b363c994f16571fed874e1d0a73e19d224a28c7f2441db88a9111"
+      },
+      {
+        "path": "service38_gpu_identity.cs",
+        "sha256": "a4ba83ea54be1140628b7f96fe6d0c0009a08d4bf17f5b6aa8534ab371c1eedf"
+      },
+      {
+        "path": "query_service38.ps1",
+        "sha256": "eb7f75d4b9eb52be454a7f93437d019bd68892e9e809c852ab05d29eacc7827e"
+      },
+      {
+        "path": "observe_service38.ps1",
+        "sha256": "680a08f94f126275a4d6d04406582c71c5d287bba05df733fabbb1bceb923a56"
+      },
+      {
+        "path": "stable_triton_knob.py",
+        "sha256": "58cc3684ea1238aca956dc8abf933b1afe0b95c2aab05afed9667c71ac2a4b8e"
+      },
+      {
+        "path": "cached_stats_launcher.py",
+        "sha256": "ebf1576130a695b1f3d558103fa74c13fb5446d5a3389cd9c94e9e1b5e612be0"
+      },
+      {
+        "path": "backend_cpu_affinity.py",
+        "sha256": "a90f30c4b4595f9043a8f5ae3340e13c85131d89164667e07d60e52280a4df78"
+      },
+      {
+        "path": "reviewed_source.py",
+        "sha256": "eff1aa46f5e6afc271bd5615742455537850eb679cc0f3465d40e8b9ce5f08f3"
+      },
+      {
+        "path": "profile.json",
+        "sha256": "806e8d0718cb8e1a405dd1af8fb9b73c66814dd59680d737c403f1ac95d1ac84"
+      },
+      {
+        "path": "quarantine-history.json",
+        "sha256": "24a46ae2dbb09754dc3be67f84eff311b71984a88c3db445a12d6270bb2be3eb"
+      },
+      {
+        "path": "accepted-source.rocm1010.json",
+        "sha256": "5e87c47dd34e9f287a7f48c3ba68f4f0229080c2df6658156b41c697e124d7fd"
+      },
+      {
+        "path": "rocm1010/compiler_safety.py",
+        "sha256": "c30250abfaa0ee14e744e84628458d0f423d82f63759525c5be0591fbd63b19d"
+      },
+      {
+        "path": "rocm1010/sitecustomize.py",
+        "sha256": "d29787e4678121e68bd7bc2e38f07377abd1785850d0491d0d0a8ddc22b1dfcf"
+      },
+      {
+        "path": "backend_progress.py",
+        "sha256": "e39ea440e872ce1a14d35b0b44b95598e85ec2569ea2f89c834663f72e70da66"
+      },
+      {
+        "path": "service64k_progress.ps1",
+        "sha256": "15423a5470998dcab2786cb02af3b2421a207ce6f5f263694f7c2cce189bbf08"
+      }
+    ]
+  },
+  "remaining_gate": "one targeted diagnostic short/long/short and managed Stop; no full series",
+  "capture_limits": "Python stacks and host stages; no native HIP/GPU stack or device-instruction completion claim",
+  "evidence_sha256_relative_to_workspace": {
+    "rocm10-20260926/research-refresh-20261011-audit/deps-upgrade-20261012/backend-progress-20261013/before.xml": "efa122faad284d4eba485f439d58d5d1e8d3b6e999aeb6404e2952f88a7c3f3b",
+    "rocm10-20260926/research-refresh-20261011-audit/deps-upgrade-20261012/backend-progress-20261013/cpu-checks.xml": "90bf3e7ae2be887cedceec1aec70396c63463aa9c9b30a70b2284e7e6edf6625",
+    "rocm10-20260926/research-refresh-20261011-audit/deps-upgrade-20261012/backend-progress-20261013/cpu-checks-final.xml": "3d425179adde75600a7847b6d79d403c5e759925bdfb6d31730d0506fc51742f",
+    "rocm10-20260926/research-refresh-20261011-audit/deps-upgrade-20261012/backend-progress-20261013/cpu-checks-verified.xml": "fd13c7521813bcce3240624ba4cc0a0020ca5a026eca81a0783daa3a322aee26",
+    "rocm10-20260926/research-refresh-20261011-audit/deps-upgrade-20261012/backend-progress-20261013/verify-rocm1000.json": "8a8b2615999cd05084d2ecf84c8ded947299dcc28ceec2a9dec24cf8fabf8e70",
+    "rocm10-20260926/research-refresh-20261011-audit/deps-upgrade-20261012/backend-progress-20261013/verify-rocm1010.json": "a1df465dca4ce38173b555eb0649dcae305675bb971893c598ab128d8e91a371",
+    "rocm10-20260926/research-refresh-20261011-audit/deps-upgrade-20261012/backend-progress-20261013/status.json": "09d479aabcf24cd12132233c13c58782f14e9289a7d64894546accdb32bcb6e4",
+    "rocm10-20260926/research-refresh-20261011-audit/deps-upgrade-20261012/backend-progress-20261013/reviewed-release.json.before": "e74d01b5206a83ca03ec8e1fc61358d001d287e86bcd520dea65d58625b839f6",
+    "rocm10-20260926/research-refresh-20261011-audit/deps-upgrade-20261012/backend-progress-20261013/reviewed-release.rocm1010.json.before": "56f3c842e710e95f3a0922f442c60b17da2e61ec26493adedeb8760380b92a17",
+    "rocm10-20260926/research-refresh-20261011-audit/deps-upgrade-20261012/backend-progress-20261013/record_offline.py": "a7ee2c1eee3ef08944e4289fd4283522ffa2d4d85ad2f4cb80fb3741a2d5dc27"
+  }
+}

@@ -59,6 +59,11 @@ function Stop-TrialService {
         Write-Output 'Managed service is already stopped'
         return
     }
+    $capture = Save-Service64kProgressCapture $state 'controller stop'
+    if ($capture.enabled) {
+        if ($capture.directory) { Write-Output ("Backend diagnostics saved: " + $capture.directory) }
+        else { Write-Output ("Backend diagnostics unavailable: " + $capture.error) }
+    }
     $treeBeforeStop = @(Get-Service38Tree $state)
     if (-not $treeBeforeStop.Count -and $state.status -eq 'RUNNING') {
         Write-Service38Fault $faultFile 'Running service exited before managed stop' $activePointer.state_file

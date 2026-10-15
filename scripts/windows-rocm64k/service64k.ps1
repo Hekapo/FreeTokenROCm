@@ -1,7 +1,7 @@
 #requires -Version 7.0
 [CmdletBinding()]
 param(
-    [ValidateSet('Configure','SetCpuAffinity','Verify','Preflight','Start','Stop','Status','Health')]
+    [ValidateSet('Configure','SetCpuAffinity','Verify','Preflight','Start','Stop','Status','Health','CaptureDiagnostics')]
     [string]$Action = 'Status',
     [string]$ConfigFile = '',
     [string]$VenvRoot = '',
@@ -10,7 +10,8 @@ param(
     [string]$MsvcRoot = '',
     [string]$WindowsSdkRoot = '',
     [ValidateSet('rocm1000','rocm1010')][string]$Runtime = 'rocm1010',
-    [ValidateSet('windows','one_per_core')][string]$BackendCpuAffinity = 'windows'
+    [ValidateSet('windows','one_per_core')][string]$BackendCpuAffinity = 'windows',
+    [switch]$ProgressDiagnostics
 )
 $ErrorActionPreference = 'Stop'
 if (-not $IsWindows) { throw 'This managed profile requires Windows and PowerShell 7' }
@@ -26,6 +27,9 @@ $configPath = if ($ConfigFile) { Resolve-Service64kPath $ConfigFile }
 $controlMutex = $null
 $controlMutexOwned = $false
 try {
+    if ($PSBoundParameters.ContainsKey('ProgressDiagnostics') -and $Action -notin @('Start','Preflight')) {
+        throw 'ProgressDiagnostics is accepted only with Start or Preflight'
+    }
     if ($Action -eq 'Configure') {
         $controlMutex = [Threading.Mutex]::new($false, 'Local\FreeTokenROCm-Service38-1919')
         try { $controlMutexOwned = $controlMutex.WaitOne(5000) }
@@ -85,7 +89,7 @@ try {
     if ($Action -eq 'Stop') {
         Write-Service38Json $stopRequestFile ([ordered]@{ at = (Get-Date).ToString('o'); reason = 'controller stop' })
     }
-    if ($Action -in @('Start','Stop','SetCpuAffinity')) {
+    if ($Action -in @('Start','Stop','SetCpuAffinity','CaptureDiagnostics')) {
         $controlMutex = [Threading.Mutex]::new($false, 'Local\FreeTokenROCm-Service38-1919')
         $waitMs = if ($Action -eq 'Stop') { 300000 } else { 5000 }
         try { $controlMutexOwned = $controlMutex.WaitOne($waitMs) }
@@ -96,6 +100,11 @@ try {
         if (-not $controlMutexOwned) { throw 'Another service control action is in progress' }
     }
     switch ($Action) {
+        'CaptureDiagnostics' {
+            $state = Get-State
+            if (-not $state) { throw 'No managed service is recorded' }
+            Save-Service64kProgressCapture $state 'explicit diagnostic capture' | ConvertTo-Json -Depth 8
+        }
         'SetCpuAffinity' {
             Set-Service64kCpuAffinity $BackendCpuAffinity | ConvertTo-Json -Depth 6
         }

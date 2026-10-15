@@ -543,3 +543,325 @@ def test_cpu_affinity_receipt_requires_live_owned_worker(tmp_path, case):
     @{allowed=$allowed;reason=$reason}|ConvertTo-Json
     ''', {'case': case, 'directory': str(tmp_path)})
     assert result['allowed'] is (case == 'pass'), result.get('reason')
+
+
+@pytest.fixture
+def progress_module():
+    spec = importlib.util.spec_from_file_location('managed_backend_progress', MODULE / 'backend_progress.py')
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+class FakeFaultHandler:
+    def __init__(self):
+        self.armed = []
+        self.cancelled = 0
+
+    def dump_traceback_later(self, timeout, **kwargs):
+        self.armed.append((timeout, kwargs))
+
+    def cancel_dump_traceback_later(self):
+        self.cancelled += 1
+
+    def dump_traceback(self, *, file, all_threads):
+        assert all_threads
+        file.write(b'blocked_backend_frame\n')
+
+
+def test_progress_busy_nested_wait_and_idle_lifecycle(tmp_path, progress_module):
+    handler = FakeFaultHandler()
+    with progress_module.ProgressRecorder(tmp_path / 'progress', {'pid': 20, 'creation_filetime': 30},
+                                          fault_handler=handler) as recorder:
+        with recorder.stage('overlap_loop'):
+            with recorder.stage('receive', waiting=True):
+                assert not json.loads(recorder.latest.read_text())['busy']
+            with recorder.stage('forward_submit', batch={'phase': 'prefill', 'requests': [{'uid': 7}]}):
+                before = json.loads(recorder.latest.read_text())
+                with recorder.stage('gpu_result_wait'):
+                    inside = json.loads(recorder.latest.read_text())
+                    assert inside['busy'] and inside['phase'] == 'gpu_result_wait'
+                assert inside['busy_started_utc'] == before['busy_started_utc']
+                assert recorder.stack_file.exists()
+        final = json.loads(recorder.latest.read_text())
+        assert not final['busy'] and final['phase'] == 'idle'
+        assert final['pid'] == 20 and final['creation_filetime'] == 30
+        assert final['history'][-1]['event'] == 'exit'
+    assert handler.armed and all(not value['repeat'] and not value['exit'] for _, value in handler.armed)
+    assert handler.cancelled >= 2
+
+
+def test_progress_exception_preserved_and_output_bounded(tmp_path, progress_module):
+    handler = FakeFaultHandler()
+    with progress_module.ProgressRecorder(tmp_path / 'progress', {'pid': 20, 'creation_filetime': 30},
+                                          fault_handler=handler) as recorder:
+        with pytest.raises(RuntimeError, match='original worker error'):
+            with recorder.stage('forward_submit'):
+                raise RuntimeError('original worker error')
+        for _ in range(100):
+            with recorder.stage('gpu_result_wait'):
+                pass
+        state = json.loads(recorder.latest.read_text())
+        assert state['last_error_type'] == 'RuntimeError'
+        assert len(state['history']) <= 32 and recorder.latest.stat().st_size < 65536
+        assert not state['busy']
+
+
+@pytest.mark.parametrize('case', ['valid', 'wrong-pid', 'reused-pid', 'oversize', 'invalid-json'])
+def test_progress_dump_request_is_bound_to_worker_identity(tmp_path, progress_module, case):
+    handler = FakeFaultHandler()
+    with progress_module.ProgressRecorder(tmp_path / 'progress', {'pid': 20, 'creation_filetime': 30},
+                                          fault_handler=handler) as recorder:
+        request = {'schema': 1, 'request_id': 'a' * 32, 'pid': 20, 'creation_filetime': 30}
+        if case == 'wrong-pid':
+            request['pid'] = 21
+        if case == 'reused-pid':
+            request['creation_filetime'] -= 1
+        path = recorder.directory / 'capture-request.json'
+        path.write_text('!' if case == 'invalid-json' else json.dumps(request), encoding='utf-8')
+        if case == 'oversize':
+            path.write_text(' ' * 5000, encoding='utf-8')
+        recorder.capture_requested()
+        ack = recorder.directory / 'capture-ack.json'
+        assert ack.exists() is (case == 'valid')
+        if case == 'valid':
+            assert json.loads(ack.read_text())['request_id'] == request['request_id']
+            assert b'blocked_backend_frame' in recorder.stack_file.read_bytes()
+
+
+def test_progress_disabled_does_not_import_scheduler_or_create_outputs(tmp_path, progress_module, monkeypatch):
+    monkeypatch.delenv('FT_BACKEND_PROGRESS_DIR', raising=False)
+    assert progress_module.run_backend(lambda a, q: (a, q), 1, 2) == (1, 2)
+    assert list(tmp_path.iterdir()) == []
+
+
+@WINDOWS
+@pytest.mark.parametrize('case', ['ack', 'timeout', 'wrong-ack', 'reused-pid', 'disabled'])
+def test_progress_capture_before_stop_is_bounded_and_provider_independent(tmp_path, case):
+    result = run_ps(r'''
+    . (Join-Path $env:FT_TEST_MODULE 'service38_safety.ps1')
+    $p=$env:FT_TEST_PAYLOAD | ConvertFrom-Json
+    $run=$p.directory
+    $directory=Join-Path $run 'backend-progress'
+    New-Item -ItemType Directory -Path $directory | Out-Null
+    $started=[datetime]'2026-01-01T00:00:00Z'
+    $created=$started.ToFileTimeUtc()
+    $state=[pscustomobject]@{pid=10;root_start_filetime=$created;run_dir=$run;progress_diagnostics=$true;
+        cpu_affinity_receipt=[pscustomobject]@{pid=20;creation_filetime=$created}}
+    @{schema=1;pid=20;creation_filetime=$created;busy=$true;sequence=1;phase='gpu_result_wait';history=@()} |
+        ConvertTo-Json | Set-Content -LiteralPath (Join-Path $directory 'latest.json')
+    [IO.File]::WriteAllBytes((Join-Path $directory 'stacks.log'),[Text.Encoding]::UTF8.GetBytes('last_backend_frame'))
+    if($p.case -eq 'disabled'){$state.progress_diagnostics=$false}
+    function Get-Service38ProcessSnapshot {throw 'Capture must not call a system provider'}
+    function Get-Process {param($Id,$ErrorAction)
+        $date=if($p.case -eq 'reused-pid' -and $Id -eq 20){$started.AddTicks(1)}else{$started}
+        [pscustomobject]@{StartTime=$date}
+    }
+    $writer=${function:Write-Service38Json}
+    function Write-Service38Json {param($Path,$Value)
+        & $writer $Path $Value
+        if((Split-Path -Leaf $Path) -eq 'capture-request.json' -and $p.case -in @('ack','wrong-ack')){
+            $ack=[ordered]@{schema=1;request_id=$Value.request_id;pid=20;creation_filetime=$created}
+            if($p.case -eq 'wrong-ack'){$ack.request_id='b'*32}
+            & $writer (Join-Path (Split-Path -Parent $Path) 'capture-ack.json') $ack
+        }
+    }
+    $timer=[Diagnostics.Stopwatch]::StartNew()
+    $r=Save-Service64kProgressCapture $state 'controller stop' -WaitMilliseconds 120
+    @{result=$r;elapsed_ms=$timer.ElapsedMilliseconds;
+      requested=(Test-Path -LiteralPath (Join-Path $directory 'capture-request.json'))}|ConvertTo-Json -Depth 10
+    ''', {'case': case, 'directory': str(tmp_path)})
+    assert result['elapsed_ms'] < 2000
+    capture = result['result']
+    if case == 'disabled':
+        assert not capture['enabled'] and not result['requested']
+    else:
+        assert capture['enabled']
+        assert capture['stack_acknowledged'] is (case == 'ack')
+        assert result['requested'] is (case != 'reused-pid')
+        directory = Path(capture['directory'])
+        assert (directory / 'latest.json').exists()
+        assert (directory / 'stacks.log').read_text() == 'last_backend_frame'
+
+
+def test_progress_hooks_match_frozen_source_without_importing_engine(progress_module):
+    import ast
+    definitions = {}
+    for name in ('scheduler.py', 'io.py'):
+        tree = ast.parse((ROOT / 'python/freetoken/scheduler' / name).read_text(encoding='utf-8'))
+        definitions.update({node.name: tuple(arg.arg for arg in node.args.args)
+                            for node in ast.walk(tree) if isinstance(node, ast.FunctionDef)})
+    assert all(definitions.get(name) == signature for name, signature in progress_module.HOOKS.items())
+
+
+def test_progress_scheduler_hooks_restore_inheritance_and_preserve_results(tmp_path, progress_module):
+    class IO:
+        def _recv_msg_single_rank(self, blocking=False):
+            return []
+
+        def _reply_tokenizer_rank0(self, reply):
+            return len(reply)
+
+    class Scheduler(IO):
+        def run_when_idle(self):
+            pass
+
+        def normal_loop(self):
+            return self.overlap_loop(None)
+
+        def overlap_loop(self, last_data):
+            self._recv_msg_single_rank(blocking=False)
+            self._schedule_next_batch()
+            self._restore_linear_states(batch)
+            result = self._forward(SimpleNamespace(batch=batch))
+            self._process_last_data((SimpleNamespace(batch=batch), result))
+            return result
+
+        def _process_one_msg(self, msg):
+            return msg
+
+        def _schedule_next_batch(self):
+            return None
+
+        def _restore_linear_states(self, batch):
+            pass
+
+        def _forward(self, forward_input):
+            return 'host submitted'
+
+        def _process_last_data(self, last_data):
+            return 'GPU drain returned'
+
+        def _execute_pending_rebuild(self):
+            pass
+
+    batch = SimpleNamespace(phase='prefill', reqs=[SimpleNamespace(uid=7, cached_len=54272, device_len=54784)])
+    prior = dict(Scheduler.__dict__)
+    with progress_module.ProgressRecorder(tmp_path / 'progress', {'pid': 20, 'creation_filetime': 30},
+                                          fault_handler=FakeFaultHandler()) as recorder:
+        with progress_module.instrument_scheduler(Scheduler, recorder):
+            assert Scheduler().normal_loop() == 'host submitted'
+            state = json.loads(recorder.latest.read_text())
+            assert not state['busy']
+            stages = [row['phase'] for row in state['history']]
+            assert 'gpu_result_wait' in stages and 'forward_submit' in stages
+            rows = [row for row in state['history'] if row.get('batch')]
+            assert any(row['batch']['requests'][0]['cached_len'] == 54272 for row in rows)
+        assert dict(Scheduler.__dict__) == prior
+        with pytest.raises(RuntimeError, match='Unreviewed'):
+            with progress_module.instrument_scheduler(Scheduler, recorder):
+                with progress_module.instrument_scheduler(Scheduler, recorder):
+                    pass
+        assert dict(Scheduler.__dict__) == prior
+
+
+@WINDOWS
+def test_progress_native_watchdog_dumps_while_c_code_holds_gil(tmp_path):
+    code = f'''
+import ctypes, json, os, sys
+sys.path.insert(0, {str(MODULE)!r})
+from backend_progress import ProgressRecorder
+def stalled_native_operation(recorder):
+    library = ctypes.PyDLL('kernel32')
+    library.Sleep.argtypes = [ctypes.c_uint32]
+    library.Sleep.restype = None
+    with recorder.stage('gpu_result_wait'):
+        library.Sleep(700)
+with ProgressRecorder({str(tmp_path / 'progress')!r}, {{'pid':os.getpid(),'creation_filetime':1}}, stack_after_s=0.15) as recorder:
+    stalled_native_operation(recorder)
+    print(json.dumps({{'stack':recorder.stack_file.read_text(), 'gpu_loaded':'torch' in sys.modules}}))
+'''
+    result = subprocess.run([sys.executable, '-B', '-c', code], capture_output=True, text=True,
+                            timeout=8, creationflags=subprocess.CREATE_NO_WINDOW)
+    assert result.returncode == 0, result.stderr
+    record = json.loads(result.stdout)
+    assert 'Timeout' in record['stack'] and 'stalled_native_operation' in record['stack']
+    assert not record['gpu_loaded']
+
+
+@WINDOWS
+@pytest.mark.parametrize('case', ['stall', 'healthy', 'idle', 'new-seq'])
+def test_progress_stall_detector_uses_elapsed_time_and_ignores_idle(case):
+    result = run_ps(r'''
+    . (Join-Path $env:FT_TEST_MODULE 'service64k_progress.ps1')
+    $case=$env:FT_TEST_PAYLOAD | ConvertFrom-Json
+    $clock=[pscustomobject]@{Elapsed=[pscustomobject]@{TotalSeconds=50}}
+    $clock|Add-Member ScriptMethod Restart {$this.Elapsed.TotalSeconds=0}
+    $watch=[pscustomobject]@{sequence=10;clock=$clock}
+    $progress=[pscustomobject]@{busy=$true;sequence=10}
+    if($case -eq 'idle'){$progress.busy=$false}
+    if($case -eq 'healthy'){$clock.Elapsed.TotalSeconds=5}
+    if($case -eq 'new-seq'){$progress.sequence=11}
+    @{stalled=(Test-Service64kProgressStall $progress $watch)}|ConvertTo-Json
+    ''', case)
+    assert result['stalled'] is (case == 'stall')
+
+
+@WINDOWS
+def test_progress_real_cpu_worker_capture_is_saved_before_owned_exit(tmp_path):
+    import time
+    ready = tmp_path / 'ready.json'
+    code = f'''
+import json, os, sys, time
+from pathlib import Path
+sys.path.insert(0, {str(MODULE)!r})
+from backend_progress import ProgressRecorder
+from backend_cpu_affinity import WindowsCpuAffinity
+identity={{'pid':os.getpid(),'creation_filetime':WindowsCpuAffinity().created()}}
+with ProgressRecorder({str(tmp_path / 'backend-progress')!r}, identity) as recorder:
+    with recorder.stage('gpu_result_wait'):
+        Path({str(ready)!r}).write_text(json.dumps(identity))
+        time.sleep(10)
+'''
+    worker = subprocess.Popen([sys.executable, '-B', '-c', code], stdout=subprocess.PIPE,
+                              stderr=subprocess.PIPE, creationflags=subprocess.CREATE_NO_WINDOW)
+    try:
+        deadline = time.monotonic() + 4
+        while not ready.exists() and worker.poll() is None and time.monotonic() < deadline:
+            time.sleep(0.025)
+        assert ready.exists()
+        identity = json.loads(ready.read_text())
+        result = run_ps(r'''
+        . (Join-Path $env:FT_TEST_MODULE 'service38_safety.ps1')
+        $p=$env:FT_TEST_PAYLOAD | ConvertFrom-Json
+        $root=Get-Process -Id $p.root
+        $state=[pscustomobject]@{pid=$p.root;root_start_filetime=$root.StartTime.ToUniversalTime().ToFileTimeUtc();
+            run_dir=$p.directory;progress_diagnostics=$true;cpu_affinity_receipt=$p.identity}
+        Save-Service64kProgressCapture $state 'offline CPU contract' | ConvertTo-Json -Depth 8
+        ''', {'root': os.getpid(), 'directory': str(tmp_path), 'identity': identity})
+        assert worker.poll() is None
+        assert result['stack_acknowledged'] and not result['error']
+        saved = Path(result['directory'])
+        assert json.loads((saved / 'latest.json').read_text())['phase'] == 'gpu_result_wait'
+        assert 'File "<string>"' in (saved / 'stacks.log').read_text()
+    finally:
+        worker.terminate()
+        worker.communicate(timeout=5)
+
+
+def test_progress_bootstrap_assigns_gpu_before_scheduler_hooks(tmp_path, progress_module, monkeypatch):
+    import contextlib
+    import multiprocessing
+    import types
+    events = []
+    parent = types.ModuleType('freetoken')
+    parent.__path__ = []
+    selection = types.ModuleType('freetoken.gpu_select')
+    selection.set_assigned_gpu = lambda target: events.append(('assigned', target))
+    scheduler = types.ModuleType('freetoken.scheduler')
+    scheduler.Scheduler = object
+    affinity = types.ModuleType('backend_cpu_affinity')
+    affinity.WindowsCpuAffinity = lambda: SimpleNamespace(created=lambda: 30)
+    with mock.patch.dict(sys.modules, {'freetoken': parent, 'freetoken.gpu_select': selection,
+                                      'freetoken.scheduler': scheduler, 'backend_cpu_affinity': affinity}):
+        monkeypatch.setenv('FT_BACKEND_PROGRESS_DIR', str(tmp_path / 'progress'))
+        monkeypatch.setattr(multiprocessing, 'current_process', lambda: SimpleNamespace(name='freetoken-TP0-scheduler'))
+        monkeypatch.setattr(progress_module, 'ProgressRecorder', lambda *a, **kw: contextlib.nullcontext())
+        def instrument(cls, recorder):
+            assert events == [('assigned', 'GPU-selected')]
+            events.append(('instrument', cls))
+            return contextlib.nullcontext()
+        monkeypatch.setattr(progress_module, 'instrument_scheduler', instrument)
+        args = SimpleNamespace(tp_info=SimpleNamespace(size=1, rank=0), gpu_assigned=('GPU-selected',), gpu=None)
+        assert progress_module.run_backend(lambda a, q: 'original worker result', args, None) == 'original worker result'
+    assert events[0] == ('assigned', 'GPU-selected')

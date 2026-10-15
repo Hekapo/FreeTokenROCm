@@ -1,10 +1,40 @@
-# План интеграции результатов исследования: 12.10.2026
+# План интеграции результатов исследования: актуализация 15.10.2026
 
-**Действующий план.** Продолжаем в существующей ветке `integration/research-refresh-20261002`. План от 02.10 остаётся историей первоначальных решений и источником подробностей по отложенным оптимизациям. На 12.10 завершены этапы1–4 для текущего профиля: GPU sampler, GDN/GGUF operators, ordinary64K long smoke, inline system messages, live cache rebuild и отдельный Python-dependencies candidate. Подробности в [отчёте этапа1](integration-research-stage1-20261012.md), [отчёте этапа2](integration-research-stage2-20261012.md), [отчёте этапа3](integration-research-stage3-20261012.md) и [отчёте этапа4](integration-research-stage4-20261012.md).
+**Действующий статус по сохранённым данным:** этапы 0–4, функциональное
+применение ROCm 10.1 с compiler workaround, штатный launcher 64K и backend
+CPU affinity завершены. Изменения слиты и отправлены в пользовательский
+`fork/main`; база текущей работы — `dac3d655`. Полная серия на новом SDK
+дала 353 корректных запроса и чистый Stop. Ускорение самого SDK не подтверждено.
+
+В `integration/backend-progress-diagnostics` подготовлены локальные изменения
+stack/stage capture; сохранены 118 успешных CPU-проверок. Модель с этой
+диагностикой ещё не запускалась, изменения не закоммичены. Сводный отчёт по
+логам готов. Основной источник актуализации —
+[сводка от 15 октября](C:/Users/Iskandar/FreeTokenROCm/FreeTokenROCm/repos/wt-triton38-align-20260928/docs/64k-saved-logs-summary-20261015.md).
+
+**Текущий режим по просьбе пользователя:** работа с планом и документами,
+без модели и любых новых проверок, включая CPU tests, Verify, Preflight
+и GPU probes. Целевой прогон 15 октября отложен до Start; ниже он остаётся
+будущей задачей после возобновления пользователем. Новая полная серия
+в ближайшую очередь не входит. Эта актуализация не даёт команду на запуск,
+commit, merge или push.
+
+Открыты два разных вопроса: снижение скорости после soak и остановка
+отдельного длинного запроса. Обратимый short gain 25–28% от CPU affinity
+подтверждён, но не доказывает исправление длинного stall или причину прежнего
+снижения. Память в доступных samples неудачного probe выше runtime-порогов;
+в наблюдении есть разрыв 29,863 с. Причина этого разрыва тоже не установлена.
+
+Подробности реализации: [progress diagnostics](backend-progress-diagnostics-20261013.md),
+[штатный запуск](run-windows-rocm64k.md). План от 02.10 и датированные записи
+в конце этого файла сохраняют историческую область результата.
 
 ## 1. Цель и точка начала
 
-Интегрировать полезные исправления и выбранные обновления для **native Windows, RX 9070 XT / gfx1201, Qwen3.6-35B-A3B GGUF Q4_1, KV BF16, контекст 65536**, сохранив контрольный runtime и возможность отката каждого изменения. Сначала подготовить небольшие полезные изменения без модели, завершить уже начатую проверку64K, затем выбирать stack и ускорения по результатам.
+Интегрировать полезные исправления и выбранные обновления для **native Windows, RX 9070 XT / gfx1201, Qwen3.6-35B-A3B GGUF Q4_1, KV BF16, контекст 65536**, сохранив контрольный runtime и возможность отката каждого изменения. Основная интеграция выполнена; ближайший незавершённый этап — модельная приёмка новой progress-диагностики и получение evidence при возможном повторении stall.
+
+**Исходная точка плана на 12.10.2026.** Таблица ниже описывает начало
+интеграции; актуальные статусы и оставшаяся очередь приведены в разделе 2.
 
 | Параметр | Зафиксированное состояние |
 |---|---|
@@ -28,25 +58,102 @@
 
 Срез версий и revisions относится к 11 октября UTC / 12 октября по Москве. Перед применением освежаем только выбранный источник и его artifact hashes.
 
-## 2. Очередь и зависимости
+## 2. Готовность и оставшаяся очередь на 15.10.2026
 
-| Этап | Содержание | Можно без модели | Условие завершения |
-|---|---|---|---|
-| 0 | Сохранить baseline, revisions и границу текущих изменений | Да | Контроль воспроизводим, чужие и служебные файлы не смешаны с переносом |
-| 1 | FTW overwrite protection 593, real KV stats 599, sampler penalties 527 | Да, CPU часть | Раздельные CPU contracts подтверждены; GPU sampler часть имеет отдельный статус |
-| 2 | Завершить FLA/64K корректность; GGUF launch contract 185 | Аудит и CPU fixtures — да | Затронутые operators и один ordinary long smoke прошли, clean Stop |
-| 3 | Server/tokenizer 608, FP32 mRoPE 641, live rebuild 650 | CPU часть — да | Каждый включённый контракт проверен; runtime gates только по затронутым путям |
-| 4 | Выбранные Python dependency groups | Подготовка и CPU checks — да | Manifest/constraints согласованы, GGUF/API compatibility подтверждена |
-| 5 | Отдельный AMD 10.1 / Torch 2.14 candidate; Triton/TVM ABI | Подготовка — да | Exact artifacts, native/JIT checks и ограниченный smoke прошли |
-| 6 | Portable Triton knob, затем одна выбранная оптимизация | Source preparation — да | Корректность сохранена и полезный эффект измерен на нашем active path |
-| 7 | Optional prefix reuse/FP32 state/workspace | Проектирование — да | Отдельный opt-in профиль прошёл state/lifecycle/memory gates |
-| 8 | Итоговый release record и скорость 4K/8K/64K | Отчёт — да; измерения — с GPU | Принятые изменения, exact runtime и сопоставимые результаты записаны |
+### 2.1. Что уже готово
 
-**Начальная очередь 0 → 1.1 → 1.2 → 1.3 → 2 → 3 → 4 выполнена.** В этапе5 подготовлен отдельный AMD10.1/Torch2.14 candidate: artifacts/hash/metadata, 298 CPU cases и native/TVM build/load прошли. Triton post29 провалил histogram/loop compiler gates, GPU/model qualification отсутствует; candidate не принят. [Отчёт этапа5](integration-research-stage5-20261012.md). Следующий обязательный шаг для принятия10.1 — исправленный compiler и согласованная host qualification. Этап6.1 можно продолжать на принятом ROCm10.0 runtime независимо от этого candidate. Смена обычного runtime/default и принятие performance изменений требуют его корректности.
+| Этап / результат | Статус по сохранённой приёмке | Что остаётся в этой области |
+|---|---|---|
+| 0 — baseline/provenance | Manifests, donor revisions, окружения и отдельные caches сохранены | Новый снимок нужен при следующем изменении исполняемых inputs |
+| 1 — FT593/599/527 | Conversion protection, KV accounting и sampler contracts приняты | Повторного переноса нет |
+| 2 — FLA/GGUF/64K | Operator contracts, diagnostic и ordinary short/63488/short прошли, оба Stop чистые | Прежняя причина NaN отдельно не установлена; новый stall 13 октября учитывается отдельно |
+| 3 — server/tokenizer/cache lifecycle | FT608/650 и live resize приняты; FT641 неприменим к локальным функциям | Повторная реализация не требуется |
+| 4 — Python dependencies | Приняты выбранные группы, 74-package manifest и GGUF/API compatibility | TVM-FFI/Numba и обновления вне выбранных bounds — условный backlog |
+| 5 — ROCm 10.1 / Torch 2.14 / post29 | Q4_1, attention, short/load, полная серия 353 requests и Stop прошли; рабочий config переключён | Compiler hook обязателен; upstream compiler не исправлен, общий speed gain SDK не доказан |
+| 6.1 — portable Triton knob | Source opt-in реализован и функционально принят | Default off: нового выигрыша не показано |
+| 6.2 — routed-only Q4_1 short prefill | Ограниченный opt-in принят; TTFT benefit подтверждён для короткого профиля | Default 0; overlap/long не квалифицированы, расширение опции отложено |
+| 8 — capacity-срез 4K/8K/64K | На ROCm 10.0: 9/9 correct, все Stop чистые; 37,20/37,42/37,56 TPS | Это историческое сравнение capacity, не новый SDK benchmark |
+| Штатный launcher 64K | Перенесён в repository, обновления SDK и affinity слиты/запушены в main | Существующую интеграцию повторять не нужно |
+| Backend CPU affinity | Два обратимых A/B показали +25–28%; repository bootstrap и короткий smoke приняты | Локально выбран `one_per_core`; длинный prefill и soak этого режима не квалифицированы |
+| Progress diagnostics | Stage journal, C watchdog, CaptureDiagnostics и capture перед Stop реализованы; 118 CPU checks прошли | Модельная приёмка отсутствует; `progress_diagnostics_model_qualified=false` |
+| Сводка сохранённых логов | Завершена 15 октября; хронология, память, скорость, Stop и ссылки на raw evidence | Использовать как исходные данные следующего этапа |
 
-Офлайн FLA-часть старого этапа1 продолжается в этапе2 этого плана. Старый source-knob этап2 перенесён в6, stack этап3 — в5; это перестановка очереди, а не повтор уже выполненной работы.
+Этап 7 — prefix reuse/FP32 intermediate state/workspace — остаётся
+необязательным развитием. Он не включён в ближайшую очередь.
 
-**Диагностическое исключение:** если этап 2 даст конкретный failing operator/DLL/compiler evidence, выбранный stack из 5 можно проверить раньше как контролируемое сравнение на замороженном source. Для самого такого сравнения не требуется сначала исправить старый stack. Оно не становится новым default без собственной успешной приёмки.
+### 2.2. Что осталось и в каком порядке
+
+**А. Принять новую диагностику с моделью — ближайший незавершённый этап.**
+Сейчас отложен: пользователь запретил модель и новые проверки. После
+явного возобновления выполнить одну целевую последовательность, readiness
+учитывать отдельно:
+
+1. Сохранить точные source/runtime inputs, включая локальные изменения,
+   config, compiler workaround и CPU affinity. Одного HEAD недостаточно.
+   До загрузки действуют startup RAM/commit/GPU free 38/45/14 GiB,
+   runtime 12/4/3 и recovery 38/28/14. Прежние разовые исключения не переносить.
+2. `Start -ProgressDiagnostics` с текущим `one_per_core`; подтвердить
+   context/KV 65536, PID/time и включённый recorder.
+3. Ровно три задания: короткий контроль 24 tokens → прежний
+   `decode-63488` → тот же короткий контроль. Ожидаемый counting-ответ
+   каждого — 391 token и сохранённый SHA256 `34a4f1e5…`.
+4. Сохранить stage journal, Python stacks и capture metadata до Stop;
+   записать request ID, PID/time и факт fresh ack. При отсутствующем ack
+   не объявлять fresh stack capture успешным.
+5. Выполнить managed Stop и сверить завершение записанных процессов,
+   свободный порт и итог ресурсов. На первом fault закончить попытку,
+   сохранить первый fault marker и доступные stacks/latest.
+
+**Условие завершения А:** три корректных ответа, освобождённый KV после
+запросов, работающий recorder с согласованной identity, успешный capture
+и чистый Stop. При ошибке сохраняется незавершённый статус, следующий шаг
+определяется полученным evidence. Diagnostic timing не квалифицирует скорость.
+Полная серия, soak и повторные 4K/8K замеры сюда не входят.
+
+**Б. Разобрать результат и закрыть только подтверждённую область.**
+Если А успешен, записать модельную приёмку diagnostics для конкретных
+source/runtime/config; обновить report, manifest и соответствующие release
+flags. Это не доказывает причину или устранение исторического stall.
+Если А воспроизводит отказ, сопоставить UID, последний stage, watchdog stack,
+heartbeat, ресурсы и порядок cleanup; затем выбрать один узкий reproducer
+по конкретной гипотезе. Native HIP/GPU stack новый recorder не предоставляет.
+
+Открытые вопросы вести отдельно:
+
+- Длинный probe: `UID=37`, prefill counter 54 272/63 488, нет terminal reply,
+  managed Stop failed; позднейшее освобождение ресурсов не заменяет Stop.
+- Наблюдатель: разрыв heartbeat 29,863 с и process probe timeout;
+  источник задержки неизвестен.
+- Производительность: после soak 50,02 → 39,06 TPS; эффект affinity
+  подтверждён в другом запуске, размещение потоков в момент снижения неизвестно.
+
+**В. Оформить изменения progress diagnostics.** После результата А/Б
+обновить область qualification и подготовить отдельный commit. Commit,
+merge и push — только по новому поручению пользователя; предыдущая публикация
+launcher/SDK/affinity уже выполнена. Служебный `.serena/` и raw evidence
+не включать в функциональный перенос. Сейчас изменения остаются локальными.
+
+### 2.3. Отложенное развитие
+
+Эти пункты не блокируют ближайшую приёмку diagnostics и не запускаются
+автоматически после неё:
+
+- Узкое исследование сохранения скорости с `one_per_core`, если пользователь
+  вернётся к этому вопросу: нужны размещение потоков и обычные timings в момент
+  снижения. Нынешние +25–28% не являются приростом от SDK.
+- Замена compiler workaround подтверждённым исправлением компилятора.
+  Текущий hook сохраняется; будущий candidate требует собственных compiler,
+  operator и затронутых model gates.
+- Обслуживание ОС/драйвера для другой строки vendor support — отдельная
+  системная задача. Работа на сохранённой 24H2/старом драйвере не равна
+  квалификации всей официальной матрицы; обновление хоста сейчас не выполняется.
+- TVM-FFI/Numba, Attention632, bounded workspace, GEMV/GDN fusion,
+  расширение routed-only demand на overlap/long и prefix reuse этапа 7 —
+  только при подтверждённой пользе/активном callsite и отдельном объёме работы.
+
+Параметры, exact donor revisions и способы отката для завершённых и
+отложенных этапов сохранены в разделе 4. Датированные записи раздела 6
+описывают состояние на дату записи и не заменяют актуальную очередь выше.
 
 ## 3. Общий порядок работы
 
@@ -169,17 +276,35 @@ Token-only checks выполнять на metadata fixtures/существующ
 
 ### Этап 5 — отдельный vendor stack и compiler qualification
 
-Старый RC 10.1.0rc3 план заменён **stable candidate 10.1.0**: официальный индекс уже содержит Windows files. Состав уточняется по фактическим wheels/metadata до установки.
+**Актуальный результат на 15.10.2026:** ROCm 10.1 / Torch 2.14 / Triton
+post29 функционально принят с обязательным compiler workaround и выбран
+в штатном 64K config. Q4_1, attention, short/load и полная серия 353 requests
+с clean Stop выполнены. Изменения слиты и отправлены в main. Общий speed gain
+SDK не подтверждён; native compiler не исправлен. Отдельный длинный probe
+позднее остановился, его причина остаётся задачей раздела 2.
+[Полная серия](rocm1010-full-series-20261013.md),
+[обновление библиотек](rocm1010-upgrade-20261012.md),
+[сводка](C:/Users/Iskandar/FreeTokenROCm/FreeTokenROCm/repos/wt-triton38-align-20260928/docs/64k-saved-logs-summary-20261015.md).
 
-**12.10.2026: подготовка выполнена; runtime acceptance не пройдена.** Девять vendor packages обновлены согласованно в отдельной CP312 venv; все74 installed packages совместимы, native build/load и CPU TVM tensor interop прошли. Обе Torch bounds теперь `>=2.11,<2.15`. Triton post29 ошибочно сворачивает histogram и два loop comparisons; отключение добавления этого pass в отдельном диагностическом процессе восстановило histogram output predicate. Production bypass не добавлен. [Exact artifacts](../constraints/windows-rocm1010-artifacts-20261012.json), [constraints](../constraints/windows-rocm1010-candidate-20261012.txt), [evidence и оставшиеся gates](integration-research-stage5-20261012.md).
+**История первого gate, 12.10.2026:** stable 10.1.0 заменил RC-план.
+Девять vendor packages обновлены в отдельной CP312 venv; 74 installed packages,
+native build/load и CPU TVM interop прошли. Обе Torch bounds — `>=2.11,<2.15`.
+Исходный post29 ошибочно сворачивал histogram и два loop comparisons, поэтому
+первая runtime acceptance не прошла. Позднее явный repository compiler hook
+обошёл ошибочный pass и прошёл выбранные compiler/operator/model gates;
+vendor files не менялись. Первая неудачная квалификация сохранена в
+[историческом отчёте этапа 5](integration-research-stage5-20261012.md),
+[exact artifacts](../constraints/windows-rocm1010-artifacts-20261012.json) и
+[constraints](../constraints/windows-rocm1010-candidate-20261012.txt).
 
 | Вариант | Состав | Назначение |
 |---|---|---|
-| Control | AMD Torch 2.13.0+rocm10.0.0, SDK 10.0.0, Triton post28 | Сохранённая рабочая среда |
-| Основной candidate | AMD Torch 2.14.0+rocm10.1.0, matching device-gfx12-0 и SDKcore/devel/libraries/device-gfx1201=10.1.0; Triton Windows 3.8.0.post29 | Отдельные venv/native build/cache; проверка целого согласованного комплекта |
-| Условная diagnostic развилка | AMD Torch 2.13.0+rocm10.1.0 с matching components | Только для различения SDK/Torch эффекта; сначала подтвердить cp312 Windows files и compiler совместимость. Не обязательная дополнительная серия |
+| Rollback/control | AMD Torch 2.13.0+rocm10.0.0, SDK 10.0.0, Triton post28 | Сохранённая отдельная рабочая среда |
+| Принятый рабочий stack | AMD Torch 2.14.0+rocm10.1.0, matching device-gfx12-0 и SDKcore/devel/libraries/device-gfx1201=10.1.0; Triton Windows 3.8.0.post29 | Штатный 64K, отдельные venv/native build/cache; compiler hook обязателен |
+| Отложенная diagnostic развилка | AMD Torch 2.13.0+rocm10.1.0 с matching components | В исходном плане — различение SDK/Torch эффекта. Не реализована, не входит в оставшийся обязательный объём |
 
-Последовательность:
+Порядок квалификации артефактов, выполненный для принятого комплекта и
+сохраняемый для будущей замены compiler/runtime:
 
 1. Получить exact artifacts, SHA256 байтов, metadata и resolved manifest; `rocm==10.1.0` metapackage является sdist, и его build metadata требует отдельного учёта.
 2. Точечно согласовать **runtime и build-system** Torch bounds: выполнено, оба `>=2.11,<2.15`. Не открывать верхнюю границу произвольно для будущих major releases.
@@ -187,9 +312,25 @@ Token-only checks выполнять на metadata fixtures/существующ
 4. Проверить выбранные маленькие compiler reproducers и LDS до model smoke. Triton 11577 histogram backport был open, 11429 loop backport closed unmerged; post29 source не содержит подтверждённого histogram fix. Источник fixes выбирается по failing operator, не по обещанию версии.
 5. Отдельный managed ordinary smoke только после static/native gates; сохранить exact source/package/compiler/DLL manifest.
 
-[Индекс AMD](https://stable.repo.amd.com/rocm/whl-next/) и [официальная установка](https://rocm.docs.amd.com/projects/ai-ecosystem/en/latest/frameworks/pytorch/install.html) подтверждают опубликованную Torch 2.14 / gfx1201 пару. [Матрица 10.1](https://rocm.docs.amd.com/en/latest/compatibility/compatibility-matrix.html) указывает Windows 11 / 25H2; [driver release](https://www.amd.com/en/resources/support-articles/release-notes/RN-RAD-ROCM-10-01.html) — DriverStore 32.0.31041.5005. Нынешние 24H2 / 32.0.31041.1004 отличаются. Venv не изолирует системный driver: его/ОС обслуживание оформлять отдельно и затем повторно фиксировать control, а результат на прежней комбинации маркировать вне этой vendor строки.
+**Сохранённый срез официальных источников на 12.10.2026:**
+[индекс AMD](https://stable.repo.amd.com/rocm/whl-next/) и
+[официальная установка](https://rocm.docs.amd.com/projects/ai-ecosystem/en/latest/frameworks/pytorch/install.html)
+содержали Torch 2.14 / gfx1201 пару;
+[матрица 10.1](https://rocm.docs.amd.com/en/latest/compatibility/compatibility-matrix.html)
+указывала Windows 11 / 25H2,
+[driver release](https://www.amd.com/en/resources/support-articles/release-notes/RN-RAD-ROCM-10-01.html) —
+DriverStore 32.0.31041.5005. Записанная машина 24H2 / 32.0.31041.1004
+отличается. Срез 15 октября не обновлялся; результат на этой машине имеет
+указанную область, а не подтверждение всей vendor матрицы. Venv не изолирует
+системный driver: обслуживание ОС/драйвера — отдельная задача с новой
+фиксацией control после изменения хоста.
 
-**Готово:** manifest/hash/native/compiler/operator checks и ordinary long/Stop прошли. Candidate становится рекомендованным только при корректности и полезном результате; «самый новый» не является критерием.
+**Готово в принятой области:** manifest/native/compiler workaround/operator
+и функциональная модельная приёмка записаны; обычный запуск переведён на
+этот stack. Performance qualification остаётся открытой; снятие compiler
+hook и приёмка другой ОС/драйвера требуют отдельного evidence. Повторять
+уже выполненные Q4_1/attention/full-series gates для обновления этого плана
+не требуется.
 **Откат:** control venv, native binaries и cache roots. После системного обновления возвращение venv не возвращает старый driver; контрольные замеры надо актуализировать.
 
 ### Этап 6 — portable source optimization и одна измеренная оптимизация
@@ -245,11 +386,11 @@ Token-only checks выполнять на metadata fixtures/существующ
 
 | Кандидат | Решение |
 |---|---|
-| FT527,593,599 | Ближайший этап 1 |
-| FLA1329, FT185 | Этап2, только обнаруженные пробелы/ограничения |
-| FT134,638 | Этап2.3: partial overlap, нужен per-function audit |
-| FT608,641,650 | Этап3, по собственным contracts |
-| FT632 | Этап6, performance после correctness |
+| FT527,593,599 | Выполнено в этапе 1; повторный перенос не нужен |
+| FLA1329, FT185 | Выбранные локальные contracts интегрированы и приняты в этапе 2 |
+| FT134,638 | Этап 2.3 завершён: недостающий guard134 перенесён, остаток638 покрыт локально |
+| FT608,641,650 | Этап 3 завершён: 608/650 приняты, 641 неприменим |
+| FT632 | Условный backlog этапа 6: active-path audit, numerical/LDS и performance gates при выборе кандидата |
 | FT138 | Дубликат guards; повторный перенос не нужен |
 | FT56 | Условный backlog: empty host_register callsite/ownership contract. Clamp nbytes<=0 к 1 byte не считать безопасным для null/negative |
 | FT495 | Условный backlog: ZMQ subscription barrier только после локального CPU startup reproducer |
@@ -260,10 +401,10 @@ Token-only checks выполнять на metadata fixtures/существующ
 | AITER4306 | Отдельные Windows JIT build techniques; библиотека не готовый универсальный accelerator |
 | AITER5732 | FlyDSL/CDNA GDN, исследовательский backlog |
 | SGLang43570 | CUDA skewed mixed-batch; concurrency 1/chunk 512 не его workload |
-| Triton 11577,11429 | Условные compiler probes этапа5; open/closed-unmerged статусы не считать release fixes |
+| Triton 11577,11429 | Источники compiler-гипотез среза 12.10; локальный обход принят, upstream fix не подтверждён. Не снимать hook по статусу PR |
 | ROCm hipBLASLt11340 | Проверить включение в выбранный binary и active caller при SDK гипотезе |
 | ROCm SDMA issue12535 | Данные gfx1100 hang, не доказанная причина нашего gfx1201 freeze |
-| FT issue648 | Tokenizer upgrade fixture этапа4; наш GGUF constructor отличается |
+| FT issue648 | Этап 4 принят для нашего GGUF contract; повторно учитывать при следующем изменении tokenizer |
 
 Полные source revisions и первичные URLs этих 26 строк сохранены в audit ledger. Для merged переносов используется merged commit, для open — head SHA; непустой merge_commit_sha без merged_at не означает merge.
 
@@ -271,11 +412,15 @@ FreeToken-Kai, freetoken-rdna3, ZLUDA, nix-freetoken, full AITER/FlyDSL, сто�
 
 ## 6. Журнал выполнения
 
+Таблица актуализирована на 15.10.2026 по сохранённым отчётам. Датированные
+записи ниже — история последовательных состояний; проверки в этой
+актуализации не запускались.
+
 | Пункт | Статус сейчас | Следующее действие |
 |---|---|---|
-| Git main/64K база и integration ветка | Выполнено ранее | Использовать существующую ветку |
+| Git main/64K база и integration ветка | Launcher, SDK и CPU affinity слиты/запушены; база `dac3d655` | Локальную diagnostics работу продолжать в `integration/backend-progress-diagnostics` |
 | Дополнительный аудит | Выполнен | Освежить только выбранный revision перед переносом |
-| Этот план | Итоговый срез этапа8 завершён | Native10.0/Python74; optional7 отложен, stage5 compiler gate открыт |
+| Этот план | Актуализирован 15 октября по сводке логов | Ближайшая незавершённая задача — раздел 2.2.А; сейчас модель и проверки отложены |
 | Baseline/provenance этапа0 | Source manifests, donor metadata, GPU identity, отдельные caches и model/operator evidence сохранены | Для следующих source/package changes создавать новый manifest |
 | FLA diagnostics/padding/int64 | CPU/address, GPU и model gate завершены для текущего профиля | Сохранять доказательства; не повторять широкую серию |
 | Этап1.1 / FTW593 | Source/CPU завершены: 5 passed | Использовать отказ для готового/прерванного output |
@@ -284,12 +429,16 @@ FreeToken-Kai, freetoken-rdna3, ZLUDA, nix-freetoken, full AITER/FlyDSL, сто�
 | Этап2 | Завершён: 4 GPU operator contracts, diagnostic3/3 + ordinary3/3, оба cleanStop | Данные и откаты в отчёте этапа2 |
 | Этап3 | Завершён для текущего профиля: CPU243passed, tokenizer и live resize/API3/3, cleanStop;641 неприменим | Артефакты и границы в отчёте этапа3 |
 | Этап4 | Завершён: отдельный74-package candidate, tokenizer/API parity, CPU259+3 и model3/3, cleanStop | Контроль сохранён; отчёт и constraints записаны |
-| Этап5 | Исходный compiler gate failed; явный обход прошёл CPU/IR и выбранные GPU gates | Q4_1/attention и model/Stop ещё нужны; control остаётся рабочим |
+| Этап5 | ROCm 10.1 с workaround принят: Q4_1/attention, short/load, full353 и clean Stop; рабочий config переключён | Сохранять hook и control10.0; native compiler fix/performance остаются отдельными вопросами |
 | Этап6.1 | Portable knob реализован; CPU28passed, model9/9, cleanStop; новый gain не подтверждён | Сохранить default off; не повторять серию ради шума |
 | Этап6.2 | Opt-in короткий Q4_1 prefill принят: CPU42 + GPU2 + model9/9, cleanStop; TTFT−69,81% | Default0; обычный overlap profile и длительная эксплуатация новой опции не квалифицированы |
 | Этап7 | Отложенная optional функция | Не блокирует выпуск текущей итерации |
 | Этап8 | Завершён: matched4K/8K/64K9/9, всеStopчистые; decode37.20/37.42/37.56TPS | Exact profile/ledger и ограничения в [отчёте этапа8](integration-research-stage8-20261012.md) |
-| Обычный запуск после8 | Подключён: default64K/Python74, gate18 + source9, application1 + readiness1, cleanStop | Коммиты и слияние подготовлены; [отчёт](integration-release-prep-20261012.md) |
+| Обычный запуск после8 | Repository launcher подключён и опубликован; сейчас рабочий config64K/ROCm10.1/one_per_core | Не повторять перенос; [руководство](run-windows-rocm64k.md) |
+| Полная серия ROCm10.1 | 353/353 correct, длинные входы, boundary, queue/cancel и clean Stop | После soak−21,91%: performance qualification открыта, новая полная серия не назначена |
+| Backend CPU affinity | Обратимый A/B+25–28%; bootstrap и короткий smoke приняты, слиты/запушены | Long/soak режима ещё не приняты; short gain не считать исправлением stall |
+| Progress diagnostics | Реализация и 118 CPU checks готовы; модель не запускалась, изменения локальные | Один целевой diagnostic short/long/short + Stop после возобновления пользователем |
+| Сводка сохранённых логов | Готова 15 октября, причины stall/heartbeat gap не установлены | Использовать ссылки на raw evidence и условия завершения раздела 2.2 |
 
 После каждого законченного пункта добавлять запись: donor/source revision, scope/diff, выполненная проверка и её уровень, результат, artifact path и способ отката. Невыполненные проверки остаются явно открытыми.
 
@@ -340,7 +489,7 @@ performance gain не заявлен. [Profile](../constraints/windows-rocm1010-
 
 **Запись 12.10.2026, этап6.2:** donor `ff4966bd3b57de03f1163967d6c07de2a41d7ee9` адаптирован к native Q4_1 и проверенному bounded admission. CPU42passed/5skipped; два GPU contracts прошли, maxLRU LDS1024bytes. При configured64K и actual24/391tokens main/off/on дают TTFT0,8205/0,8280/0,2500s; decode40,52/40,33/39,53TPS. Все9outputs одинаковы, всеStopчистые. ON/OFF TTFT−69,81%; decode gain не принят. Пакеты/control сохранены, feature default0. [Отчёт этапа6.2](integration-research-stage6b-20261012.md).
 
-**Итог итерации:** этап8 завершён; приняты source changes1–4 и opt-in возможности6, selected runtime — qualified Python74 с native10.0/post28. Новые опции6по умолчанию выключены. [Profile manifest](../constraints/windows-rocm1000-profile-20261012.json) и [итоговый отчёт](integration-research-stage8-20261012.md) фиксируют9/9matchedshort, прежнийlongscope и remaining gates. Optional7 отложен; stage5 compiler qualification и расширение demand на overlap/long остаются отдельными задачами. Legacy release marker/quarantine не изменены; текущая итерация не выполняет merge/publish.
+**Исторический итог итерации 12.10.2026:** этап8 завершён; приняты source changes1–4 и opt-in возможности6, selected runtime — qualified Python74 с native10.0/post28. Новые опции6по умолчанию выключены. [Profile manifest](../constraints/windows-rocm1000-profile-20261012.json) и [итоговый отчёт](integration-research-stage8-20261012.md) фиксируют9/9matchedshort, прежнийlongscope и remaining gates. Optional7 отложен; stage5 compiler qualification и расширение demand на overlap/long на эту дату оставались отдельными задачами. Legacy release marker/quarantine не изменены; эта итерация не выполняла merge/publish. Более позднее применение ROCm10.1 и публикация отражены выше и в записи 13 октября.
 
 
 **Запись12.10.2026, этап8:** одно и то же задание24/391tokens; decode37.20/37.42/37.56TPS при context/KV4096/8192/65536. Selected74packages, old native preserved, sourceoptionsdefaultoff, all9outputsidentical, all3Stopclean. 64K/4K+0.97%, 64K/8K+0.37%; это малыйcapacityсрез, не isolatedintegrationgain. Scope/reproducibility/release-marker границы в [отчёте этапа8](integration-research-stage8-20261012.md).
@@ -357,3 +506,32 @@ matched control после soak50,02→39,06TPS (−21,91%), performance qualifi
 пересчитана из raw per-process samples; raw null aggregate не использован
 как proof. [Отчёт](rocm1010-full-series-20261013.md),
 [manifest](../constraints/windows-rocm1010-full-series-20261013.json).
+
+**Исследование и CPU affinity, 13.10.2026:** сохранены 84 корректных коротких
+запроса сравнения: old SDK 37,196 / new 36,175 TPS; ускорение SDK не доказано.
+Два обратимых переключения backend на один LP физического ядра дали
++28,09%/+25,23%. Repository bootstrap принят отдельным коротким запуском:
+1 readiness, 1 counting warmup + 3 measurements, median 45,882 TPS, чистый Stop.
+Изменение слито и отправлено в `fork/main` как `dac3d655`.
+Long/soak с affinity не квалифицированы; первый длинный probe с UID 37,
+prefill counter 54 272 и неудачным Stop сохранён, его причина неизвестна.
+[Исследование](rocm1010-speed-investigation-20261013.md),
+[внедрение](rocm1010-cpu-affinity-launcher-20261013.md).
+
+**Progress diagnostics, 13.10.2026:** в ветке
+`integration/backend-progress-diagnostics` поверх `dac3d655` подготовлены
+stage journal, C watchdog, bounded capture с PID/time/request ID и snapshot
+до Stop. Сохранены 118 passed, включая 22 новых CPU cases. Модель/GPU compute
+для этого механизма не запускались; qualification остаётся offline-only,
+новые model flags false, изменения не закоммичены.
+[Отчёт](backend-progress-diagnostics-20261013.md).
+
+**Актуализация 15.10.2026:** целевой прогон с новой диагностикой отложен до
+Start по просьбе пользователя. По сохранённым логам создана
+[сводка](C:/Users/Iskandar/FreeTokenROCm/FreeTokenROCm/repos/wt-triton38-align-20260928/docs/64k-saved-logs-summary-20261015.md):
+стадии исполнения, память, скорость и Stop имеют отдельные выводы. План
+обновлён по этой сводке: завершённые переносы не возвращены в очередь,
+остались модельная приёмка diagnostics, разбор её результата и оформление
+изменений; исследования compiler/performance и optional features отложены.
+В этой актуализации модель, тесты, Verify, Preflight и GPU probes не запускались;
+source/runtime/release records и прежние evidence не менялись.

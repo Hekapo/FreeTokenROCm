@@ -115,6 +115,7 @@ function Get-ProfileLaunchArgs {
     return @{
         Label = 'reviewed-64k'; Runtime = (Get-Service64kRuntime); Src = $source64k; RunDir = $runDir; Port = $port;
         BackendCpuAffinity = $config.backend_cpu_affinity;
+        ProgressDiagnostics = [bool]$ProgressDiagnostics;
         ModelPath = $config.model_path; Python = (Join-Path $venvRoot 'Scripts\python.exe');
         SdkDevel = (Join-Path $venvRoot 'Lib\site-packages\_rocm_sdk_devel');
         TritonSite = (Join-Path $venvRoot 'Lib\site-packages'); StateRoot = $stateRoot;

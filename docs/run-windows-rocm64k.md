@@ -141,6 +141,48 @@ passed96 CPU checks, readiness, four exact short responses and Stop with
 ROCm10.1. This workspace's default and ROCm10.1 alias configurations now select
 `one_per_core`; the ROCm10.0 rollback configuration retains `windows`.
 
+## Progress diagnostics
+
+For a targeted investigation, add `-ProgressDiagnostics` to `Start` (or to
+`Preflight`, which does not load the model). This flag applies to that launch;
+it is not persisted in the local configuration. Ordinary Start keeps it off.
+
+```powershell
+pwsh -NoProfile -File .\scripts\windows-rocm64k\service64k.ps1 -Action Start -ProgressDiagnostics
+pwsh -NoProfile -File .\scripts\windows-rocm64k\service64k.ps1 -Action CaptureDiagnostics
+pwsh -NoProfile -File .\scripts\windows-rocm64k\service64k.ps1 -Action Stop
+```
+
+The backend retains its latest stage and32 recent events in
+`<run>/backend-progress/latest.json`, with PID/creation time, batch phase,
+request IDs and cached/device lengths. It records host forward submission
+separately from waiting for the GPU result. The journal never reads tensor
+values or queries/synchronizes the GPU for diagnostics. Prompt text is not
+included. The actual wrapped engine operation still runs normally.
+
+A CPython watchdog writes Python thread stacks to `stacks.log` if an active
+operation lasts10seconds. It dumps once per continuous busy period, with no
+forced interpreter exit. Blocking input receive is recorded as idle; its
+cache integrity check is a separate active stage. The observer treats45seconds
+without stage progress during active work as a fault and preserves evidence
+before its existing cleanup. This is a stage-stall detector, not a total
+request deadline or proof of GPU device execution progress.
+
+`CaptureDiagnostics` requests a fresh stack from the identity-checked backend
+and saves a unique directory under `<run>/diagnostic-captures/`. Normal Stop
+does the same before process-tree queries and termination. Waiting for the
+reply is capped at1500ms; observer fault cleanup does not wait. Capture uses
+native process identity and local files, independently of WMI/system-provider
+queries. A missing/stale reply is reported as `stack_acknowledged=false`; an
+existing watchdog dump and the latest journal are still preserved. JSON reads
+are capped at64KiB, stack snapshots at1MiB, with truncation metadata.
+
+The [offline implementation report](backend-progress-diagnostics-20261013.md)
+records118 CPU checks, including a real Windows C call holding the GIL and
+a live CPU worker capture. No model or GPU compute was run for this change;
+the diagnostic bootstrap still needs a targeted model check. Diagnostics
+change timing, so speed from such a run is not an ordinary benchmark.
+
 ## Resource guard and recovery
 
 All figures are GiB of available memory.

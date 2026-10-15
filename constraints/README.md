@@ -135,3 +135,12 @@ frozen launcher copy; the production floor remains45GiB. Local ROCm10.1
 configurations now select `one_per_core`; ROCm10.0 rollback retains `windows`.
 Long-prefill and mixed-load behavior with this mode remain unqualified. See
 the [implementation report](../docs/rocm1010-cpu-affinity-launcher-20261013.md).
+
+## Backend progress diagnostics (2026-10-13)
+
+[windows-rocm64k-backend-progress-20261013.json](windows-rocm64k-backend-progress-20261013.json)
+records the opt-in stage/stack capture implementation and118 CPU checks.
+Windows C-watchdog and live CPU worker captures passed; no model or GPU
+compute was run. The existing source476/package74/native5 and memory floors
+are retained. A targeted model run is the remaining acceptance gate. See
+the [diagnostic report](../docs/backend-progress-diagnostics-20261013.md).

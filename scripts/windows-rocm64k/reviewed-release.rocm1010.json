@@ -9,31 +9,31 @@
   "user_policy": "adopt short-qualified rocm1010 with workaround; observe under load",
   "accepted_engine_commit": "d315247d8abc2ce4340354f0abe77374296258ad",
   "historical_release_sha256": "a6fb78da8f25d0beb8ee057415aac34f53b856cb7bad7b7ee7af70091a3289db",
-  "repository_launcher_model_smoke_performed": true,
+  "repository_launcher_model_smoke_performed": false,
   "runtime_hashes": [
     {
       "path": "service64k.ps1",
-      "sha256": "71d50138c77c45b8c9dfcc51466d2d1d54d04bfd8a3ee85c35551c13f9c381c6"
+      "sha256": "4aecc7f9b77c1272c5b7e8bbde44f7ed296c3893f72509357d9f82cee98b8faa"
     },
     {
       "path": "service64k_lifecycle.ps1",
-      "sha256": "0800385740342e5a858d5f7f3b490436ba51f9db913d6d7240d3842013d16986"
+      "sha256": "0ce72ef0248a9e683f3b52915562779029c894d37dc0c4bd50709f17f22c3da3"
     },
     {
       "path": "service64k_paths.ps1",
-      "sha256": "73f1732ab9d79e44db159ab956136da6210e659136a25efd0b407b6e73eda6fe"
+      "sha256": "26baec96b7a76e8534989b02951169510cc3add8cd1e9ae84ad7079c8f6a2449"
     },
     {
       "path": "service64k_release.ps1",
-      "sha256": "760e9492d7d15c981917973da76af720511feae3aec9b0a2f6d7665ef9f2bfaa"
+      "sha256": "26d62d4f4d097cf9c96ec0bfa33f887307e581ceb3df9ece11e12e9a7d5afef7"
     },
     {
       "path": "launch64k.ps1",
-      "sha256": "06f1731e26b443656818dfaee39fc5d772beb0de3a2171e340f7446f84f10fba"
+      "sha256": "d2a51f706604d3d570f7a8eb8132d3a62d998c41b6c55221a814aaf0b54bc24d"
     },
     {
       "path": "service38_safety.ps1",
-      "sha256": "e2b5620ea8b206f5e3b70a6690acea9c2816e2f268f0256f0d1d3dab86ee42c1"
+      "sha256": "04de1a917e42337ac588f2f6c6db6b467a0bf20b34ebfc7ca37ba953e5c821b4"
     },
     {
       "path": "service38_probes.ps1",
@@ -53,7 +53,7 @@
     },
     {
       "path": "observe_service38.ps1",
-      "sha256": "ec01b870396e2517175e11faf9191807e24207fe33abf09d47b18960911d58c7"
+      "sha256": "680a08f94f126275a4d6d04406582c71c5d287bba05df733fabbb1bceb923a56"
     },
     {
       "path": "stable_triton_knob.py",
@@ -65,7 +65,7 @@
     },
     {
       "path": "backend_cpu_affinity.py",
-      "sha256": "8f5d771495ca51d5ec8549fb2f8781154cd0e3238f6d60994441aa47e3a906fc"
+      "sha256": "a90f30c4b4595f9043a8f5ae3340e13c85131d89164667e07d60e52280a4df78"
     },
     {
       "path": "reviewed_source.py",
@@ -90,6 +90,14 @@
     {
       "path": "rocm1010/sitecustomize.py",
       "sha256": "d29787e4678121e68bd7bc2e38f07377abd1785850d0491d0d0a8ddc22b1dfcf"
+    },
+    {
+      "path": "backend_progress.py",
+      "sha256": "e39ea440e872ce1a14d35b0b44b95598e85ec2569ea2f89c834663f72e70da66"
+    },
+    {
+      "path": "service64k_progress.ps1",
+      "sha256": "15423a5470998dcab2786cb02af3b2421a207ce6f5f263694f7c2cce189bbf08"
     }
   ],
   "evidence_hashes": [
@@ -107,13 +115,19 @@
   "runtime": "rocm1010",
   "requires_range_safety": true,
   "qualification_scope": "short64k; long64k not inherited from rocm1000",
-  "previous_launcher_record_sha256": "3f80ea04fb4cb83f05bfd630e6b7087dda4ce10f64532d6f8c498d837bbb55f3",
+  "previous_launcher_record_sha256": "56f3c842e710e95f3a0922f442c60b17da2e61ec26493adedeb8760380b92a17",
   "supported_backend_cpu_affinity": [
     "windows",
     "one_per_core"
   ],
-  "one_per_core_model_smoke_performed": true,
+  "one_per_core_model_smoke_performed": false,
   "one_per_core_long_prefill_qualified": false,
   "one_per_core_model_smoke_scope": "frozen repository launcher copy; one readiness plus four 24/391 requests; clean Stop; one-time startup commit floor 40, production floor 45",
-  "one_per_core_model_smoke_manifest": "constraints/windows-rocm1010-cpu-affinity-launcher-20261013.json"
+  "one_per_core_model_smoke_manifest": "constraints/windows-rocm1010-cpu-affinity-launcher-20261013.json",
+  "progress_diagnostics_model_qualified": false,
+  "progress_diagnostics_scope": "opt-in; offline CPU/Windows capture checks; no new model or GPU run",
+  "inherited_cpu_affinity_smoke": {
+    "performed": true,
+    "scope": "historical CPU-affinity launcher; this diagnostic bootstrap has no new model qualification"
+  }
 }
